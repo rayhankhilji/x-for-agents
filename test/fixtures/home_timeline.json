@@ -1,0 +1,42 @@
+{
+  "data": { "home": { "home_timeline_urt": { "instructions": [ { "type": "TimelineAddEntries", "entries": [
+    { "entryId": "tweet-1001", "content": { "entryType": "TimelineTimelineItem", "itemContent": { "itemType": "TimelineTweet",
+      "tweet_results": { "result": { "__typename": "Tweet", "rest_id": "1001",
+        "core": { "user_results": { "result": { "__typename": "User", "rest_id": "11", "core": { "screen_name": "photog", "name": "Photo Grapher" }, "legacy": {} } } },
+        "views": { "count": "12345", "state": "EnabledWithCount" },
+        "legacy": { "created_at": "Mon Nov 10 14:00:00 +0000 2026", "full_text": "Sunset &amp; sea https://t.co/abc", "lang": "en",
+          "favorite_count": 10, "retweet_count": 2, "reply_count": 1, "quote_count": 0, "bookmark_count": 3,
+          "extended_entities": { "media": [
+            { "media_key": "3_1", "type": "photo", "url": "https://t.co/abc", "media_url_https": "https://pbs.twimg.com/media/AAA111.jpg", "original_info": { "width": 4000, "height": 3000 }, "ext_alt_text": "a sunset" },
+            { "media_key": "3_2", "type": "photo", "url": "https://t.co/abc", "media_url_https": "https://pbs.twimg.com/media/BBB222.png", "original_info": { "width": 800, "height": 600 } }
+          ] } } } } } } },
+    { "entryId": "tweet-1002", "content": { "itemContent": { "tweet_results": { "result": { "__typename": "TweetWithVisibilityResults",
+      "tweet": { "rest_id": "1002",
+        "core": { "user_results": { "result": { "rest_id": "12", "legacy": { "screen_name": "vidguy", "name": "Vid Guy" } } } },
+        "legacy": { "created_at": "Mon Nov 10 13:00:00 +0000 2026", "full_text": "watch this https://t.co/vid",
+          "extended_entities": { "media": [ { "media_key": "7_9", "type": "video", "url": "https://t.co/vid",
+            "media_url_https": "https://pbs.twimg.com/ext_tw_video_thumb/9/pu/img/x.jpg", "original_info": { "width": 1920, "height": 1080 },
+            "video_info": { "duration_millis": 30500, "variants": [
+              { "content_type": "application/x-mpegURL", "url": "https://video.twimg.com/ext_tw_video/9/pu/pl/x.m3u8" },
+              { "content_type": "video/mp4", "bitrate": 832000, "url": "https://video.twimg.com/ext_tw_video/9/pu/vid/640x360/low.mp4" },
+              { "content_type": "video/mp4", "bitrate": 2176000, "url": "https://video.twimg.com/ext_tw_video/9/pu/vid/1280x720/high.mp4" }
+            ] } } ] } } } } } } } },
+    { "entryId": "tweet-1003", "content": { "itemContent": { "tweet_results": { "result": { "rest_id": "1003",
+      "core": { "user_results": { "result": { "core": { "screen_name": "retweeter" } } } },
+      "legacy": { "full_text": "RT @gifmaker: lol", "retweeted_status_result": { "result": { "rest_id": "900",
+        "core": { "user_results": { "result": { "core": { "screen_name": "gifmaker" } } } },
+        "legacy": { "full_text": "lol https://t.co/g", "extended_entities": { "media": [ { "media_key": "16_1", "type": "animated_gif", "url": "https://t.co/g",
+          "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/G.jpg",
+          "video_info": { "variants": [ { "content_type": "video/mp4", "bitrate": 0, "url": "https://video.twimg.com/tweet_video/G.mp4" } ] } } ] } } } } } } } } } },
+    { "entryId": "tweet-1004", "content": { "itemContent": { "tweet_results": { "result": { "rest_id": "1004",
+      "core": { "user_results": { "result": { "core": { "screen_name": "quoter" } } } },
+      "note_tweet": { "note_tweet_results": { "result": { "text": "A very long note tweet body that exceeds 280 characters..." } } },
+      "legacy": { "full_text": "A very long note…", "quoted_status_id_str": "800" },
+      "quoted_status_result": { "result": { "rest_id": "800", "core": { "user_results": { "result": { "core": { "screen_name": "original" } } } },
+        "legacy": { "full_text": "quoted pic", "extended_entities": { "media": [ { "media_key": "3_8", "type": "photo", "media_url_https": "https://pbs.twimg.com/media/QQQ.jpg" } ] } } } } } } } } },
+    { "entryId": "promoted-tweet-555", "content": { "itemContent": { "promotedMetadata": { "advertiser_results": {} }, "tweet_results": { "result": { "rest_id": "555",
+      "core": { "user_results": { "result": { "core": { "screen_name": "brand" } } } },
+      "legacy": { "full_text": "buy now", "extended_entities": { "media": [ { "media_key": "3_5", "type": "photo", "media_url_https": "https://pbs.twimg.com/media/AD.jpg" } ] } } } } } } },
+    { "entryId": "tweet-1005", "content": { "itemContent": { "tweet_results": { "result": { "__typename": "TweetTombstone" } } } } }
+  ] } ] } } }
+}

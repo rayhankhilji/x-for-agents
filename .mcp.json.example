@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "x": {
+      "command": "node",
+      "args": ["/absolute/path/to/x-for-agents/dist/index.js"],
+      "env": {
+        "X_DATA_DIR": "~/x-for-agents-data"
+      }
+    }
+  }
+}
