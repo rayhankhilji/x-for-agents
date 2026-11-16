@@ -12,12 +12,14 @@ export type MediaType = "photo" | "video" | "gif";
 
 export interface Media {
   key: string;
+  /** Position in the post (stable even when filters drop siblings). */
+  index: number;
   type: MediaType;
   /** Best direct URL: original-size image, or highest-bitrate MP4. */
   url: string;
   /** HLS playlist, used as a fallback when no MP4 variant exists. */
   hls_url?: string;
-  /** Poster/thumbnail image for videos and GIFs. */
+  /** Small preview image (~680px) for every media type. */
   thumbnail?: string;
   width?: number;
   height?: number;
@@ -77,11 +79,18 @@ function bestImageUrl(mediaUrl: string): string {
   return mediaUrl;
 }
 
-export function parseMedia(m: Json): Media | null {
+function smallUrl(mediaUrl: string): string {
+  const m = mediaUrl.match(/^(https:\/\/pbs\.twimg\.com\/[^?]+?)\.(jpg|jpeg|png|webp)(\?.*)?$/);
+  return m ? `${m[1]}?format=${m[2] === "png" ? "png" : "jpg"}&name=small` : mediaUrl;
+}
+
+export function parseMedia(m: Json, index = 0): Media | null {
   if (!m || !m.media_url_https) return null;
   const key = String(m.media_key ?? m.id_str ?? m.media_url_https);
   const base = {
     key,
+    index,
+    thumbnail: smallUrl(m.media_url_https),
     width: m.original_info?.width,
     height: m.original_info?.height,
     alt_text: m.ext_alt_text || undefined,
@@ -104,7 +113,6 @@ export function parseMedia(m: Json): Media | null {
       hls_url: hls,
       bitrate: best?.bitrate,
       duration_ms: m.video_info?.duration_millis,
-      thumbnail: m.media_url_https,
     };
   }
   return null;
@@ -129,7 +137,7 @@ export function parseTweet(raw: Json, context: Post["context"] = "timeline"): Po
   const name: string | undefined = user?.core?.name ?? user?.legacy?.name;
 
   const rawMedia: Json[] = L.extended_entities?.media ?? L.entities?.media ?? [];
-  const media = rawMedia.map(parseMedia).filter((x): x is Media => !!x);
+  const media = rawMedia.map((m, i) => parseMedia(m, i)).filter((x): x is Media => !!x);
   const mediaTco = rawMedia.map((m) => m.url).filter(Boolean);
 
   const fullText: string = t.note_tweet?.note_tweet_results?.result?.text ?? L.full_text ?? "";

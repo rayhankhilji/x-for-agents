@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { extractPosts } from "../src/parse.ts";
 import { parseCookies } from "../src/browser.ts";
-import { postIdFrom, sourceUrl } from "../src/collect.ts";
+import { applyFilters, postIdFrom, sourceUrl } from "../src/collect.ts";
+import { kfmt, rows } from "../src/format.ts";
 import { mediaPath } from "../src/download.ts";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/home_timeline.json", import.meta.url), "utf8"));
@@ -73,6 +74,27 @@ test("source URLs and post ids", () => {
 });
 
 test("media paths are deterministic per post/index", () => {
-  assert.match(mediaPath(byId["1001"], byId["1001"].media[1], 1, "/d"), /\/d\/photog\/1001_2\.png$/);
-  assert.match(mediaPath(byId["1002"], byId["1002"].media[0], 0, "/d"), /\/d\/vidguy\/1002_1\.mp4$/);
+  assert.match(mediaPath(byId["1001"], byId["1001"].media[1], "/d"), /\/d\/photog\/1001_2\.png$/);
+  assert.match(mediaPath(byId["1002"], byId["1002"].media[0], "/d"), /\/d\/vidguy\/1002_1\.mp4$/);
+});
+
+test("filters keep stable media indexes", () => {
+  const f = { mediaOnly: true, includeQuoted: false, includeRetweets: true };
+  const only2nd = applyFilters(byId["1001"], { ...f, minSize: 1000 })!;
+  assert.equal(only2nd.media.length, 1);
+  assert.equal(only2nd.media[0].index, 0);
+  assert.equal(applyFilters(byId["1001"], { ...f, mediaTypes: ["video"] }), null);
+  assert.equal(applyFilters(byId["800"], f), null, "quoted excluded by default");
+  assert.ok(applyFilters(byId["1001"], { ...f, match: "sunset,moon" }));
+  assert.equal(applyFilters(byId["1001"], { ...f, match: "/^moon/" }), null);
+  assert.ok(applyFilters(byId["1001"], { ...f, match: "/A SUNSET/" }), "regex is case-insensitive and checks alt text");
+  assert.equal(applyFilters(byId["1002"], { ...f, maxDurationS: 10 }), null);
+});
+
+test("compact rows are terse", () => {
+  const out = rows(posts, { textChars: 20, limit: 3 });
+  const lines = out.split("\n");
+  assert.equal(lines[1], "1|1001|photog|26-11-10|10|12.3k|2p|Sunset & sea");
+  assert.match(lines.at(-1)!, /\+2 more/);
+  assert.equal(kfmt(1_250_000), "1.3M");
 });

@@ -5,3 +5,6 @@ dist/
 cookies*.json
 cookies*.txt
 x-data/
+
+# Downloaded media (remove this line if you want to commit it)
+x-media/

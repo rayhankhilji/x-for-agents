@@ -1,10 +1,11 @@
 {
   "mcpServers": {
     "x": {
-      "command": "node",
-      "args": ["/absolute/path/to/x-for-agents/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "x-for-agents@latest"],
       "env": {
-        "X_DATA_DIR": "~/x-for-agents-data"
+        "X_OUTPUT_DIR": "x-media",
+        "X_TABS": "10"
       }
     }
   }

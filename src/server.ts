@@ -1,250 +1,367 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { getUiCapability, registerAppResource, registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
-import { BrowserSession, hasAuthCookie, whoAmI } from "./browser.js";
-import { collect, postIdFrom, SOURCES, type CollectResult } from "./collect.js";
-import { config, mediaDir } from "./config.js";
-import { downloadPosts, type DownloadResult } from "./download.js";
+import { BrowserPool, hasAuthCookie, whoAmI } from "./browser.js";
+import { collect, postIdFrom, rateLimits, SOURCES, type CollectOptions, type CollectResult } from "./collect.js";
+import { config, displayPath, resolveOutDir } from "./config.js";
+import { downloadPosts, resolveFfmpeg, startDownloads, type DownloadResult } from "./download.js";
+import { downloadLine, fullJson, kfmt, rows, runHeader, type Detail } from "./format.js";
 import type { MediaType, Post } from "./parse.js";
-import { PostStore } from "./store.js";
+import { cellsFor, renderSheet } from "./preview.js";
+import { PostStore, type Run } from "./store.js";
+import { GALLERY_URI, UI_CSP, UI_MIME, galleryData, galleryHtml } from "./ui.js";
 
-const session = new BrowserSession();
+export const pool = new BrowserPool();
 const store = new PostStore();
+const VERSION = "0.2.0";
 
-const mediaTypeEnum = z.enum(["photo", "video", "gif"]);
+// ---------------------------------------------------------------- schemas (kept terse: every word here costs tokens on every turn)
 
-function ok(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+const mediaType = z.enum(["photo", "video", "gif"]);
+const jobShape = {
+  source: z.enum(SOURCES),
+  target: z.string().optional().describe("handle | search query | list id | post/x.com URL"),
+  search_mode: z.enum(["latest", "top", "media"]).optional(),
+  max_posts: z.number().int().min(1).max(2000).optional().describe("default 40"),
+  max_scrolls: z.number().int().min(0).max(1000).optional().describe("default 60"),
+  media_types: z.array(mediaType).optional(),
+  media_only: z.boolean().optional().describe("default true"),
+  match: z.string().optional().describe("keywords a,b (any) or /regex/ on text+alt"),
+  min_likes: z.number().optional(),
+  min_views: z.number().optional(),
+  min_size: z.number().optional().describe("min px of longest side"),
+  min_duration_s: z.number().optional(),
+  max_duration_s: z.number().optional(),
+  lang: z.string().optional(),
+  since: z.string().optional().describe("ISO date; stop past it"),
+  include_retweets: z.boolean().optional().describe("default true"),
+  include_quoted: z.boolean().optional(),
+};
+const jobSchema = z.object(jobShape);
+type Job = z.infer<typeof jobSchema>;
+
+const outputShape = {
+  download: z.boolean().optional().describe("default true"),
+  output_dir: z.string().optional().describe("relative = inside current project/repo"),
+  detail: z.enum(["summary", "compact", "full"]).optional(),
+  text_chars: z.number().int().min(0).max(2000).optional().describe("default 60"),
+  preview: z.boolean().optional().describe("attach contact-sheet image"),
+  rate_limit_wait_s: z.number().int().min(0).max(1800).optional().describe("wait for reset instead of stopping"),
+};
+
+// ---------------------------------------------------------------- helpers
+
+function jobLabel(j: Job) {
+  return j.target ? `${j.source} ${j.source.startsWith("user") || j.source === "likes" ? "@" + j.target.replace(/^@/, "") : j.target}` : j.source;
 }
-function fail(e: unknown) {
-  return { isError: true, content: [{ type: "text" as const, text: `Error: ${(e as Error)?.message ?? String(e)}` }] };
-}
 
-function summarize(posts: Post[], downloads: DownloadResult[], textChars: number) {
-  const byKey = new Map(downloads.map((d) => [`${d.post_id}:${d.media_key}`, d]));
-  return posts.map((p) => ({
-    id: p.id,
-    url: p.url,
-    author: p.author.handle,
-    created_at: p.created_at,
-    ...(textChars > 0 && p.text ? { text: p.text.length > textChars ? p.text.slice(0, textChars) + "…" : p.text } : {}),
-    ...(p.context !== "timeline" ? { context: p.context } : {}),
-    ...(p.retweeted_by ? { retweeted_by: p.retweeted_by } : {}),
-    likes: p.metrics?.likes,
-    views: p.metrics?.views,
-    media: p.media.map((m) => {
-      const d = byKey.get(`${p.id}:${m.key}`);
-      return {
-        type: m.type,
-        ...(d?.path ? { file: d.path } : { url: m.url }),
-        ...(d?.status === "error" ? { error: d.error } : {}),
-        ...(m.duration_ms ? { duration_s: Math.round(m.duration_ms / 1000) } : {}),
-        ...(m.width ? { size: `${m.width}x${m.height}` } : {}),
-      };
-    }),
-  }));
-}
-
-function mediaCounts(posts: Post[]) {
-  const c = { photo: 0, video: 0, gif: 0 };
-  for (const p of posts) for (const m of p.media) c[m.type]++;
-  return c;
-}
-
-function downloadCounts(d: DownloadResult[]) {
+function toOptions(j: Job, rateLimitWaitS?: number): CollectOptions {
   return {
-    downloaded: d.filter((x) => x.status === "downloaded").length,
-    already_had: d.filter((x) => x.status === "exists").length,
-    failed: d.filter((x) => x.status === "error").length,
-    bytes: d.reduce((n, x) => n + (x.bytes ?? 0), 0),
+    source: j.source,
+    target: j.target,
+    searchMode: j.search_mode ?? "latest",
+    maxPosts: j.max_posts ?? 40,
+    maxScrolls: j.max_scrolls ?? 60,
+    mediaOnly: j.media_only ?? true,
+    mediaTypes: j.media_types as MediaType[] | undefined,
+    includeQuoted: j.include_quoted ?? false,
+    includeRetweets: j.include_retweets ?? true,
+    match: j.match,
+    minLikes: j.min_likes,
+    minViews: j.min_views,
+    minSize: j.min_size,
+    minDurationS: j.min_duration_s,
+    maxDurationS: j.max_duration_s,
+    lang: j.lang,
+    since: j.since,
+    rateLimitWaitS,
   };
 }
 
+interface JobOutcome {
+  id: string;
+  label: string;
+  result: CollectResult;
+  downloads?: DownloadResult[];
+  outDir: string;
+  error?: string;
+}
+
+async function runJob(j: Job, out: { download?: boolean; output_dir?: string; rate_limit_wait_s?: number }): Promise<JobOutcome> {
+  const id = store.newRunId();
+  const label = jobLabel(j);
+  const outDir = resolveOutDir(out.output_dir);
+  const download = out.download ?? true;
+  const opts = toOptions(j, out.rate_limit_wait_s);
+  const early: Promise<DownloadResult>[] = [];
+  const started = new Set<string>();
+  if (download && j.source !== "post") {
+    // Start downloading each post the moment it's seen, while the tab keeps scrolling.
+    opts.onPost = (p) => {
+      started.add(p.id);
+      early.push(...startDownloads(p, { dir: outDir }));
+    };
+  }
+  const result = await pool.withPage((page) => collect(page, opts));
+  store.add(result.posts);
+  let downloads: DownloadResult[] | undefined;
+  if (download) {
+    const rest = result.posts.filter((p) => !started.has(p.id));
+    downloads = [...(await Promise.all(early)), ...(await downloadPosts(rest, { dir: outDir }))];
+  }
+  const run: Run = {
+    id,
+    label,
+    created_at: new Date().toISOString(),
+    url: result.url,
+    stop: result.stopReason,
+    posts: result.posts,
+    files: downloads?.filter((d) => d.path).map((d) => ({ post: d.post_id, key: d.media_key, path: d.path })),
+  };
+  store.saveRun(run);
+  return { id, label, result, downloads, outDir };
+}
+
+function localFileMap(run: Run): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const f of (run.files as { post: string; key: string; path: string }[] | undefined) ?? []) m.set(`${f.post}:${f.key}`, f.path);
+  return m;
+}
+
+/** "1-10,14,20b" → row numbers (letters ignored; whole post selected). */
+function parseRows(spec: string | undefined, max: number): number[] {
+  if (!spec) return Array.from({ length: max }, (_, i) => i + 1);
+  const out = new Set<number>();
+  for (const part of spec.split(/[\s,]+/).filter(Boolean)) {
+    const r = part.match(/^(\d+)[a-h]?(?:-(\d+)[a-h]?)?$/);
+    if (!r) continue;
+    const a = Number(r[1]);
+    const b = r[2] ? Number(r[2]) : a;
+    for (let i = a; i <= Math.min(b, max); i++) out.add(i);
+  }
+  return [...out].sort((x, y) => x - y);
+}
+
+type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "x-for-agents", version: "0.1.0" });
+  const server = new McpServer({ name: "x-for-agents", version: VERSION });
+  const wantsUi = () =>
+    process.env.X_UI === "always" || (process.env.X_UI !== "never" && !!getUiCapability(server.server.getClientCapabilities() as any));
+  const ui = { ui: { resourceUri: GALLERY_URI } };
 
-  server.registerTool(
-    "x_status",
-    {
-      title: "X login status",
-      description:
-        "Check whether the browser is signed in to X and which account. Run this first if other tools report a login problem.",
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        const res = await session.withPage(async (page, ctx) => {
-          const cookie = await hasAuthCookie(ctx);
-          const who = await whoAmI(page);
-          return { ...who, has_auth_cookie: cookie };
-        });
-        return ok({
-          logged_in: res.loggedIn,
-          account: res.handle ? `@${res.handle}` : undefined,
-          has_auth_cookie: res.has_auth_cookie,
-          data_dir: config.dataDir,
-          posts_indexed: store.size(),
-          ...(res.loggedIn
-            ? {}
-            : { how_to_login: "In a terminal: `npx x-for-agents login` (or `import-cookies <file>`), then retry." }),
-        });
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
+  registerAppResource(server, "X media gallery", GALLERY_URI, { description: "Gallery for x-for-agents results" }, async () => ({
+    contents: [{ uri: GALLERY_URI, mimeType: UI_MIME, text: galleryHtml(), _meta: { ui: { csp: UI_CSP } } }],
+  }));
 
-  server.registerTool(
+  async function preview(posts: Post[], startRow: number, run?: Run, cols?: number): Promise<Content | null> {
+    const cells = cellsFor(posts, startRow, run ? localFileMap(run) : undefined);
+    if (!cells.length) return null;
+    const jpg = await renderSheet(pool, cells.slice(0, 60), { cols: cols ?? (cells.length <= 12 ? 4 : 6) });
+    return { type: "image", data: jpg.toString("base64"), mimeType: "image/jpeg" };
+  }
+
+  // ------------------------------------------------------------ x_collect
+  registerAppTool(
+    server,
     "x_collect",
     {
-      title: "Scroll X and collect media",
-      description: [
-        "Open an X feed with the user's logged-in account, scroll it, and collect posts with their images/videos.",
-        "By default only posts that contain media are kept and all media is downloaded to disk (full-resolution images, highest-bitrate MP4s).",
-        "Sources: home (For You), following, user (a profile's posts), user_media (a profile's Media tab — best for grabbing everything someone posted),",
-        "search (target = query, supports X operators like 'from:nasa filter:videos'), bookmarks, likes (target = your handle), list (target = list id/URL), url (any x.com URL).",
-        "Returns a compact summary with local file paths; the full JSON is saved to `saved_to`. Downloaded images can be viewed with the Read tool.",
-      ].join(" "),
-      inputSchema: {
-        source: z.enum(SOURCES).describe("Which feed to scroll."),
-        target: z.string().optional().describe("Handle, search query, list id, or URL depending on source."),
-        search_mode: z.enum(["top", "latest", "media"]).optional().describe("For source=search. Default latest."),
-        max_posts: z.number().int().min(1).max(1000).default(40).describe("Stop after this many matching posts."),
-        max_scrolls: z.number().int().min(0).max(500).default(60).describe("Hard cap on scroll steps."),
-        media_only: z.boolean().default(true).describe("Keep only posts that have media."),
-        media_types: z.array(mediaTypeEnum).optional().describe("Restrict to these media types, e.g. ['video']."),
-        download: z.boolean().default(true).describe("Download the media files to disk."),
-        include_retweets: z.boolean().default(true),
-        include_quoted: z.boolean().default(false).describe("Also keep posts that only appear as quotes."),
-        since: z.string().optional().describe("ISO date; stop once the feed scrolls past it (works best on latest-first feeds)."),
-        output_dir: z.string().optional().describe(`Where to save media. Default ${mediaDir()}`),
-        text_chars: z.number().int().min(0).max(4000).default(140).describe("Characters of post text to include in the response (0 = none)."),
-      },
+      title: "Collect from X",
+      description:
+        "Scroll an X feed on the user's logged-in account (headless, fast) and collect posts + download media (orig-size images, best MP4). " +
+        "Sources: home, following, user, user_media (best for all of someone's media), search (X operators ok), bookmarks, likes, list, post, url. " +
+        "Filters run server-side, so prefer them over reading results. Output rows are numbered for x_preview/x_download. " +
+        "For several feeds at once use x_batch (parallel tabs).",
+      inputSchema: { ...jobShape, ...outputShape },
+      _meta: ui,
     },
-    async (a) => {
+    async (a: any) => {
       try {
-        const result: CollectResult = await session.withPage((page) =>
-          collect(page, {
-            source: a.source,
-            target: a.target,
-            searchMode: a.search_mode ?? "latest",
-            maxPosts: a.max_posts,
-            maxScrolls: a.max_scrolls,
-            mediaOnly: a.media_only,
-            mediaTypes: a.media_types as MediaType[] | undefined,
-            includeQuoted: a.include_quoted,
-            includeRetweets: a.include_retweets,
-            since: a.since,
-          }),
-        );
-        store.add(result.posts);
-        const downloads = a.download
-          ? await downloadPosts(result.posts, { types: a.media_types as MediaType[] | undefined, dir: a.output_dir })
-          : [];
-        const savedTo = store.saveCollection(`${a.source}_${a.target ?? ""}`, { ...result, downloads });
-        return ok({
-          source: a.source,
-          url: result.url,
-          stop_reason: result.stopReason,
-          scrolls: result.scrolls,
-          posts: result.posts.length,
-          media: mediaCounts(result.posts),
-          ...(a.download ? { downloads: downloadCounts(downloads), media_dir: a.output_dir ?? mediaDir() } : {}),
-          saved_to: savedTo,
-          ...(result.stopReason === "rate_limited"
-            ? { warning: "X returned 429 (rate limited). Wait 15+ minutes before scrolling again." }
-            : {}),
-          items: summarize(result.posts, downloads, a.text_chars),
-        });
+        const o = await runJob(a, a);
+        const detail: Detail = a.detail ?? "compact";
+        const content: Content[] = [{ type: "text", text: renderOutcome(o, detail, a.text_chars ?? 60) }];
+        if (a.preview) {
+          const img = await preview(o.result.posts, 1, store.getRun(o.id), undefined);
+          if (img) content.push(img);
+        }
+        return {
+          content,
+          ...(wantsUi() ? { structuredContent: galleryData(o.id, o.label, o.result.posts, o.result.stopReason) as any } : {}),
+        };
       } catch (e) {
         return fail(e);
       }
     },
   );
 
-  server.registerTool(
-    "x_get_post",
+  // ------------------------------------------------------------ x_batch
+  registerAppTool(
+    server,
+    "x_batch",
     {
-      title: "Get one X post",
-      description: "Fetch a single post (by URL or id) with its media, and optionally download the media. Also returns the post it quotes, if any.",
+      title: "Collect from many X feeds in parallel",
+      description: `Run up to 50 x_collect jobs concurrently across ${config.tabs} browser tabs on the same account. One summary line per job by default.`,
+      inputSchema: { jobs: z.array(jobSchema).min(1).max(50), ...outputShape },
+      _meta: ui,
+    },
+    async (a: any) => {
+      const t0 = Date.now();
+      const outcomes = await Promise.all(
+        (a.jobs as Job[]).map((j) =>
+          runJob(j, a).catch(
+            (e): JobOutcome => ({
+              id: "-",
+              label: jobLabel(j),
+              outDir: resolveOutDir(a.output_dir),
+              error: (e as Error).message,
+              result: { url: "", posts: [], scrolls: 0, apiResponses: 0, stopReason: "end_of_feed", elapsedMs: 0 },
+            }),
+          ),
+        ),
+      );
+      const detail: Detail = a.detail ?? "summary";
+      const allPosts = outcomes.flatMap((o) => o.result.posts);
+      const allDl = outcomes.flatMap((o) => o.downloads ?? []);
+      const head = `batch: ${outcomes.length} jobs · ${allPosts.length} posts · ${((Date.now() - t0) / 1000).toFixed(1)}s` +
+        (a.download ?? true ? "\n" + downloadLine(allDl, resolveOutDir(a.output_dir)) : "");
+      const body = outcomes
+        .map((o) => (o.error ? `✗ ${o.label}: ${o.error}` : renderOutcome(o, detail, a.text_chars ?? 60, true)))
+        .join(detail === "summary" ? "\n" : "\n\n");
+      const content: Content[] = [{ type: "text", text: `${head}\n${body}` }];
+      if (a.preview) {
+        const img = await preview(allPosts.slice(0, 60), 1);
+        if (img) content.push(img);
+      }
+      return {
+        content,
+        ...(wantsUi() ? { structuredContent: galleryData(outcomes.map((o) => o.id).join(","), `Batch · ${outcomes.length} feeds`, allPosts) as any } : {}),
+      };
+    },
+  );
+
+  // ------------------------------------------------------------ x_preview
+  registerAppTool(
+    server,
+    "x_preview",
+    {
+      title: "Contact sheet of collected media",
+      description:
+        "Render a run's media as ONE labelled thumbnail grid image (cheap way to see/judge up to 60 items). Labels = row number (+letter for multi-media posts).",
       inputSchema: {
-        post: z.string().describe("Post URL (https://x.com/user/status/123…) or numeric id."),
-        download: z.boolean().default(true),
-        output_dir: z.string().optional(),
+        run: z.string().describe("run id from x_collect/x_batch"),
+        rows: z.string().optional().describe('e.g. "1-30" (default first 30)'),
+        cols: z.number().int().min(2).max(10).optional(),
       },
+      _meta: ui,
     },
     async (a) => {
       try {
-        const result = await session.withPage((page) =>
-          collect(page, {
-            source: "post",
-            target: a.post,
-            maxPosts: 2,
-            maxScrolls: 0,
-            mediaOnly: false,
-            includeQuoted: true,
-            includeRetweets: true,
-          }),
-        );
-        if (!result.posts.length) throw new Error("Post not found (deleted, protected, or not visible to this account).");
-        store.add(result.posts);
-        const downloads = a.download ? await downloadPosts(result.posts, { dir: a.output_dir }) : [];
-        return ok({
-          ...(a.download ? { downloads: downloadCounts(downloads) } : {}),
-          items: summarize(result.posts, downloads, 4000),
-        });
+        const run = store.getRun(a.run);
+        if (!run) throw new Error(`unknown run ${a.run}`);
+        const sel = parseRows(a.rows ?? "1-30", run.posts.length);
+        const posts = sel.map((n) => run.posts[n - 1]);
+        // Labels must reflect original row numbers even for sparse selections.
+        const cells = posts.flatMap((p, i) => cellsFor([p], sel[i], localFileMap(run)));
+        const jpg = await renderSheet(pool, cells.slice(0, 60), { cols: a.cols ?? (cells.length <= 12 ? 4 : 6) });
+        return {
+          content: [
+            { type: "text" as const, text: `run ${run.id} · ${run.label} · rows ${a.rows ?? "1-30"} · ${cells.length} items` },
+            { type: "image" as const, data: jpg.toString("base64"), mimeType: "image/jpeg" },
+          ],
+          ...(wantsUi() ? { structuredContent: galleryData(run.id, run.label, posts) as any } : {}),
+        };
       } catch (e) {
         return fail(e);
       }
     },
   );
 
+  // ------------------------------------------------------------ x_download
   server.registerTool(
     "x_download",
     {
-      title: "Download media for posts",
-      description:
-        "Download media for posts already collected (by id/URL). Posts not in the local index are fetched from X first. Use this after x_collect with download=false.",
+      title: "Download media",
+      description: "Download media for rows of a run (e.g. after reviewing x_preview) or for post ids/URLs. Use output_dir to put files in the repo.",
       inputSchema: {
-        posts: z.array(z.string()).min(1).max(500).describe("Post ids or URLs."),
-        media_types: z.array(mediaTypeEnum).optional(),
+        run: z.string().optional(),
+        rows: z.string().optional().describe('e.g. "2,5,9-12"'),
+        posts: z.array(z.string()).max(500).optional().describe("post ids/URLs"),
+        media_types: z.array(mediaType).optional(),
         output_dir: z.string().optional(),
       },
     },
     async (a) => {
       try {
         const posts: Post[] = [];
+        if (a.run) {
+          const run = store.getRun(a.run);
+          if (!run) throw new Error(`unknown run ${a.run}`);
+          for (const n of parseRows(a.rows, run.posts.length)) posts.push(run.posts[n - 1]);
+        }
         const missing: string[] = [];
-        for (const ref of a.posts) {
+        for (const ref of a.posts ?? []) {
           const id = postIdFrom(ref);
           const p = store.get(id);
-          if (p) posts.push(p);
-          else missing.push(id);
+          p ? posts.push(p) : missing.push(id);
         }
-        for (const id of missing) {
-          const r = await session.withPage((page) =>
-            collect(page, {
-              source: "post",
-              target: id,
-              maxPosts: 1,
-              maxScrolls: 0,
-              mediaOnly: false,
-              includeQuoted: false,
-              includeRetweets: true,
-            }),
-          );
-          const p = r.posts.find((x) => x.id === id);
-          if (p) {
-            store.add([p]);
-            posts.push(p);
-          }
-        }
-        const downloads = await downloadPosts(posts, { types: a.media_types as MediaType[] | undefined, dir: a.output_dir });
-        return ok({
-          ...downloadCounts(downloads),
-          not_found: missing.filter((id) => !posts.some((p) => p.id === id)),
-          files: downloads.map((d) => ({ post: d.post_id, type: d.type, file: d.path, status: d.status, error: d.error })),
-        });
+        await Promise.all(
+          missing.map((id) =>
+            pool
+              .withPage((page) =>
+                collect(page, { ...toOptions({ source: "post", target: id }), mediaOnly: false, maxPosts: 2, maxScrolls: 0 }),
+              )
+              .then((r) => {
+                const p = r.posts.find((x) => x.id === id);
+                if (p) {
+                  store.add([p]);
+                  posts.push(p);
+                }
+              })
+              .catch(() => undefined),
+          ),
+        );
+        if (!posts.length) throw new Error("nothing to download (give run+rows or posts)");
+        const outDir = resolveOutDir(a.output_dir);
+        const d = await downloadPosts(posts, { types: a.media_types as MediaType[] | undefined, dir: outDir });
+        const notFound = missing.filter((id) => !posts.some((p) => p.id === id));
+        const files = d.filter((x) => x.path).map((x) => displayPath(x.path!));
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: [downloadLine(d, outDir), notFound.length ? `not found: ${notFound.join(",")}` : "", files.length <= 40 ? files.join("\n") : ""]
+                .filter(Boolean)
+                .join("\n"),
+            },
+          ],
+        };
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  // ------------------------------------------------------------ x_status
+  server.registerTool(
+    "x_status",
+    { title: "X status", description: "Login state, account, tabs, rate limits, ffmpeg, output dir.", inputSchema: {} },
+    async () => {
+      try {
+        const who = await pool.withPage(async (page, ctx) => ({ ...(await whoAmI(page)), cookie: await hasAuthCookie(ctx) }));
+        const ff = await resolveFfmpeg({ install: false });
+        const rl = [...rateLimits.entries()]
+          .map(([op, r]) => `${op} ${r.remaining}/${r.limit} (reset ${Math.max(0, Math.round((r.reset - Date.now() / 1000) / 60))}m)`)
+          .join(", ");
+        const lines = [
+          who.loggedIn ? `logged in as @${who.handle}` : `NOT logged in (${who.cookie ? "cookie present but rejected" : "no auth cookie"})`,
+          `tabs ${pool.stats.open}/${pool.stats.max} open, ${pool.stats.busy} busy`,
+          `output ${displayPath(resolveOutDir())} · index ${kfmt(store.size())} posts`,
+          `ffmpeg ${ff ? "ok" : "not installed (auto-installs if an HLS-only video needs it)"}`,
+          rl ? `rate limits: ${rl}` : "",
+          who.loggedIn ? "" : "fix: local → `npx x-for-agents login`; cloud/web → set X_AUTH_TOKEN + X_CT0 env vars",
+        ];
+        return { content: [{ type: "text" as const, text: lines.filter(Boolean).join("\n") }] };
       } catch (e) {
         return fail(e);
       }
@@ -254,16 +371,33 @@ export function buildServer(): McpServer {
   return server;
 }
 
+function renderOutcome(o: JobOutcome, detail: Detail, textChars: number, inBatch = false): string {
+  if (detail === "summary" && inBatch) {
+    const r = o.result;
+    const files = o.downloads ? ` · ${o.downloads.filter((d) => d.status !== "error").length} files` : "";
+    const media = r.posts.reduce((n, p) => n + p.media.length, 0);
+    return `${o.id} · ${o.label} · ${r.posts.length} posts · ${media} media${files} · ${r.stopReason} · ${(r.elapsedMs / 1000).toFixed(1)}s`;
+  }
+  const head = runHeader({ id: o.id, label: o.label, result: o.result, downloads: inBatch ? undefined : o.downloads, outDir: o.outDir });
+  if (detail === "summary") return head;
+  if (detail === "full") return head + "\n" + fullJson(o.result.posts);
+  return head + "\n" + rows(o.result.posts, { textChars, limit: 50 });
+}
+
+function fail(e: unknown) {
+  return { isError: true, content: [{ type: "text" as const, text: `Error: ${(e as Error)?.message ?? String(e)}` }] };
+}
+
 export async function serveStdio() {
   const server = buildServer();
   const transport = new StdioServerTransport();
   const shutdown = async () => {
-    await session.close();
+    await pool.close();
     process.exit(0);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   transport.onclose = () => void shutdown();
   await server.connect(transport);
-  console.error(`x-for-agents MCP server ready (data: ${config.dataDir})`);
+  console.error(`[x-for-agents] MCP ready · tabs=${config.tabs} · output=${displayPath(resolveOutDir())}`);
 }

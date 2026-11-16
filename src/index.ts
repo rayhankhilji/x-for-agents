@@ -1,61 +1,87 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import { hasAuthCookie, importCookies, launchContext, parseCookies, whoAmI } from "./browser.js";
+import { envCookies, findBrowser, hasAuthCookie, importCookies, launchContext, parseCookies, whoAmI } from "./browser.js";
 import { collect, SOURCES, type Source } from "./collect.js";
-import { config } from "./config.js";
-import { downloadPosts } from "./download.js";
-import { serveStdio } from "./server.js";
-import { PostStore } from "./store.js";
+import { config, displayPath, resolveOutDir } from "./config.js";
+import { downloadLine } from "./format.js";
+import { downloadPosts, resolveFfmpeg } from "./download.js";
 
-const HELP = `x-for-agents — let Claude Code browse X with your account and pull images/videos.
+const HELP = `x-for-agents — let Claude browse X with your account and pull images/videos fast.
 
-Usage:
-  x-for-agents                       Start the MCP server on stdio (what Claude Code runs)
-  x-for-agents login                 Open a browser window, sign in to X, close it when done
-  x-for-agents import-cookies <file> Import cookies (Cookie-Editor JSON, cookies.txt, or "auth_token=..; ct0=..")
-  x-for-agents status                Show which account the saved session is signed in as
-  x-for-agents logout                Delete the saved browser profile
-  x-for-agents collect <source> [target] [--max N] [--no-download]
-                                     Same as the x_collect tool, from the terminal
+  x-for-agents                        MCP server on stdio (what Claude Code runs)
+  x-for-agents serve --http [--port 8787] [--host 127.0.0.1]
+                                      MCP over HTTP (claude.ai / Desktop custom connector). Set X_MCP_TOKEN.
+  x-for-agents login                  Open a browser window, sign in to X once
+  x-for-agents import-cookies <file|"auth_token=..; ct0=..">
+  x-for-agents status | doctor | logout | setup-ffmpeg
+  x-for-agents collect <source> [target] [--max N] [--types photo,video] [--out DIR] [--no-download]
 
 Sources: ${SOURCES.join(", ")}
-
-Env: X_HOME (profile, default ~/.x-for-agents)  X_DATA_DIR (downloads, default ~/x-for-agents-data)
-     X_HEADLESS=false (watch the browser)  X_BROWSER_CHANNEL=chrome (use installed Chrome)
-     X_AUTH_TOKEN / X_CT0 / X_COOKIES_FILE (cookie login without a UI)
+Env: X_TABS (10) X_OUTPUT_DIR X_DATA_DIR X_HOME X_HEADLESS X_BROWSER_PATH X_AUTH_TOKEN X_CT0 X_COOKIES_FILE
 `;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function login() {
-  console.log("Opening a browser window. Sign in to X there; this closes automatically once you're in.");
+  console.log("Opening a browser window. Sign in to X there; it closes automatically once you're in.");
   const ctx = await launchContext({ headless: false });
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   await page.goto("https://x.com/login");
   const deadline = Date.now() + 10 * 60_000;
-  while (Date.now() < deadline) {
-    if (ctx.pages().length === 0) break;
+  while (Date.now() < deadline && ctx.pages().length) {
     if (await hasAuthCookie(ctx)) {
-      await new Promise((r) => setTimeout(r, 3000)); // let X finish setting cookies
+      await sleep(3000);
       console.log("Signed in. Session saved to", config.profileDir);
       await ctx.close();
       return;
     }
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
   }
   await ctx.close().catch(() => undefined);
   console.error("Login not detected (timed out or window closed).");
   process.exitCode = 1;
 }
 
-async function status() {
+async function withCtx<T>(fn: (ctx: Awaited<ReturnType<typeof launchContext>>) => Promise<T>): Promise<T> {
   const ctx = await launchContext();
   try {
-    const page = ctx.pages()[0] ?? (await ctx.newPage());
-    const who = await whoAmI(page);
-    console.log(who.loggedIn ? `Signed in as @${who.handle}` : `Not signed in (landed on ${who.url})`);
-    if (!who.loggedIn) process.exitCode = 1;
+    const env = envCookies();
+    if (env.length) await importCookies(ctx, env);
+    return await fn(ctx);
   } finally {
     await ctx.close();
   }
+}
+
+async function status(): Promise<boolean> {
+  return withCtx(async (ctx) => {
+    const who = await whoAmI(ctx.pages()[0] ?? (await ctx.newPage()));
+    console.log(who.loggedIn ? `Signed in as @${who.handle}` : `Not signed in (landed on ${who.url})`);
+    return who.loggedIn;
+  });
+}
+
+async function doctor() {
+  const ok = (b: boolean) => (b ? "✓" : "✗");
+  console.log(`node ${process.version}`);
+  console.log(`profile ${config.profileDir}`);
+  console.log(`output  ${displayPath(resolveOutDir())}`);
+  console.log(`tabs    ${config.tabs}`);
+  console.log(`browser ${config.browserPath ?? findBrowser() ?? "playwright default"}`);
+  console.log(`cookies from env: ${envCookies().map((c) => c.name).join(", ") || "none"}`);
+  for (const u of ["https://x.com/", "https://pbs.twimg.com/", "https://video.twimg.com/"]) {
+    const { fetch, EnvHttpProxyAgent } = await import("undici");
+    const r = await fetch(u, { method: "HEAD", dispatcher: process.env.HTTPS_PROXY ? new EnvHttpProxyAgent() : undefined }).then(
+      (r) => r.status,
+      (e) => String(e.cause?.code ?? e.message),
+    );
+    console.log(`net ${u} → ${r}`);
+  }
+  const ff = await resolveFfmpeg({ install: false });
+  console.log(`${ok(!!ff)} ffmpeg ${ff ?? "(auto-installs on first HLS-only video, or run setup-ffmpeg)"}`);
+  const loggedIn = await status().catch((e) => (console.log("✗ browser:", e.message), false));
+  console.log(`${ok(loggedIn)} X session`);
+  if (!loggedIn) process.exitCode = 1;
 }
 
 async function importCookiesCmd(arg?: string) {
@@ -63,14 +89,9 @@ async function importCookiesCmd(arg?: string) {
   const raw = fs.existsSync(arg) ? fs.readFileSync(arg, "utf8") : arg;
   const cookies = parseCookies(raw);
   if (!cookies.some((c) => c.name === "auth_token")) throw new Error("No auth_token cookie found in input.");
-  const ctx = await launchContext();
-  try {
-    await importCookies(ctx, cookies);
-    console.log(`Imported ${cookies.length} cookies into ${config.profileDir}`);
-  } finally {
-    await ctx.close();
-  }
-  await status();
+  await withCtx((ctx) => importCookies(ctx, cookies));
+  console.log(`Imported ${cookies.length} cookies into ${config.profileDir}`);
+  if (!(await status())) process.exitCode = 1;
 }
 
 async function collectCmd(args: string[]) {
@@ -80,7 +101,7 @@ async function collectCmd(args: string[]) {
     const a = args[i];
     if (a.startsWith("--")) {
       const next = args[i + 1];
-      if (next && !next.startsWith("--") && ["--max", "--scrolls", "--types", "--since", "--out"].includes(a)) {
+      if (next && !next.startsWith("--") && ["--max", "--scrolls", "--types", "--since", "--out", "--match"].includes(a)) {
         flags.set(a, next);
         i++;
       } else flags.set(a, true);
@@ -88,45 +109,55 @@ async function collectCmd(args: string[]) {
   }
   const source = pos[0] as Source;
   if (!SOURCES.includes(source)) throw new Error(`source must be one of: ${SOURCES.join(", ")}`);
-  const ctx = await launchContext();
-  try {
-    const page = ctx.pages()[0] ?? (await ctx.newPage());
-    const types = typeof flags.get("--types") === "string" ? (flags.get("--types") as string).split(",") : undefined;
-    const r = await collect(page, {
+  const types = typeof flags.get("--types") === "string" ? ((flags.get("--types") as string).split(",") as any) : undefined;
+  await withCtx(async (ctx) => {
+    const r = await collect(ctx.pages()[0] ?? (await ctx.newPage()), {
       source,
       target: pos[1],
       searchMode: "latest",
       maxPosts: Number(flags.get("--max") ?? 40),
       maxScrolls: Number(flags.get("--scrolls") ?? 60),
       mediaOnly: !flags.has("--all"),
-      mediaTypes: types as any,
+      mediaTypes: types,
       includeQuoted: false,
       includeRetweets: true,
       since: flags.get("--since") as string | undefined,
+      match: flags.get("--match") as string | undefined,
     });
-    const store = new PostStore();
-    store.add(r.posts);
-    console.log(`${r.posts.length} posts (${r.stopReason}, ${r.scrolls} scrolls) from ${r.url}`);
+    console.log(`${r.posts.length} posts · ${r.stopReason} · ${r.scrolls} scrolls · ${(r.elapsedMs / 1000).toFixed(1)}s`);
     if (!flags.has("--no-download")) {
-      const d = await downloadPosts(r.posts, { types: types as any, dir: flags.get("--out") as string | undefined });
-      for (const x of d) console.log(`${x.status.padEnd(10)} ${x.type.padEnd(5)} ${x.path ?? x.url}${x.error ? "  " + x.error : ""}`);
+      const dir = resolveOutDir(flags.get("--out") as string | undefined);
+      console.log(downloadLine(await downloadPosts(r.posts, { types, dir }), dir));
     }
-    console.log("Saved:", store.saveCollection(`${source}_${pos[1] ?? ""}`, r));
-  } finally {
-    await ctx.close();
-  }
+  });
 }
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
+  const flag = (name: string, d: string) => {
+    const i = rest.indexOf(name);
+    return i >= 0 && rest[i + 1] ? rest[i + 1] : d;
+  };
   switch (cmd) {
     case undefined:
     case "serve":
-      return serveStdio();
+      if (rest.includes("--http")) {
+        const { serveHttp } = await import("./http.js");
+        return serveHttp(Number(flag("--port", process.env.PORT ?? "8787")), flag("--host", process.env.HOST ?? "127.0.0.1"));
+      }
+      return (await import("./server.js")).serveStdio();
     case "login":
       return login();
     case "status":
-      return status();
+      if (!(await status())) process.exitCode = 1;
+      return;
+    case "doctor":
+      return doctor();
+    case "setup-ffmpeg": {
+      const p = await resolveFfmpeg();
+      console.log(p ? `ffmpeg: ${p}` : "Could not install ffmpeg (no network to npm/GitHub?). HLS-only videos will be skipped.");
+      return;
+    }
     case "import-cookies":
       return importCookiesCmd(rest[0]);
     case "logout":
