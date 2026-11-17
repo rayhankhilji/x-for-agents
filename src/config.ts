@@ -32,6 +32,8 @@ export const config = {
   /** How long to wait for the next page of results after a scroll. */
   responseWaitMs: num(process.env.X_RESPONSE_WAIT_MS, 2500),
   downloadConcurrency: Math.max(1, num(process.env.X_DOWNLOAD_CONCURRENCY, 8)),
+  /** Hard cap per file (ms). Big videos on slow links need room; stalled streams must not hang a run. */
+  downloadTimeoutMs: num(process.env.X_DOWNLOAD_TIMEOUT_MS, 10 * 60_000),
   idleCloseMs: num(process.env.X_IDLE_CLOSE_MS, 5 * 60_000),
 };
 

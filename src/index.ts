@@ -142,6 +142,10 @@ async function collectCmd(args: string[]) {
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === undefined || cmd === "serve") {
+    // A long-running server must never die from one stray rejected promise.
+    process.on("unhandledRejection", (e) => console.error("[x-for-agents] unhandled:", (e as Error)?.message ?? e));
+  }
   const flag = (name: string, d: string) => {
     const i = rest.indexOf(name);
     return i >= 0 && rest[i + 1] ? rest[i + 1] : d;

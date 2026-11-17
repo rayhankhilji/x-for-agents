@@ -47,6 +47,8 @@ export interface Post {
   /** How this post appeared in the feed. */
   context: "timeline" | "quoted" | "retweeted";
   retweeted_by?: string;
+  /** Pinned to the top of a profile (out of date order). */
+  pinned?: boolean;
   quoted_post_id?: string;
   reply_to?: string;
   sensitive?: boolean;
@@ -62,14 +64,17 @@ function unwrapTweet(t: Json): Json | null {
 }
 
 function isTweet(o: Json): boolean {
-  return (
-    o &&
-    typeof o === "object" &&
-    typeof o.rest_id === "string" &&
-    o.legacy &&
-    typeof o.legacy === "object" &&
-    ("full_text" in o.legacy || "extended_entities" in o.legacy || "entities" in o.legacy)
-  );
+  if (!o || typeof o !== "object" || typeof o.rest_id !== "string") return false;
+  if (o.__typename && o.__typename !== "Tweet") return false;
+  const L = o.legacy;
+  // User objects also have rest_id + legacy.entities; only tweets have full_text and no screen_name.
+  return !!L && typeof L === "object" && typeof L.full_text === "string" && !("screen_name" in L);
+}
+
+function isoDate(s: unknown): string | undefined {
+  if (typeof s !== "string") return undefined;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
 function bestImageUrl(mediaUrl: string): string {
@@ -147,7 +152,7 @@ export function parseTweet(raw: Json, context: Post["context"] = "timeline"): Po
     id: t.rest_id,
     url: `https://x.com/${handle}/status/${t.rest_id}`,
     author: { handle, name, id: user?.rest_id },
-    created_at: L.created_at ? new Date(L.created_at).toISOString() : undefined,
+    created_at: isoDate(L.created_at),
     text: cleanText(fullText, mediaTco),
     lang: L.lang,
     media,
@@ -178,10 +183,17 @@ function unwrapUser(u: Json): Json {
  */
 export function extractPosts(payload: Json): Post[] {
   const out: Post[] = [];
+  let pinned = false;
   const visit = (node: Json, context: Post["context"], retweetedBy?: string) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) {
       for (const n of node) visit(n, context, retweetedBy);
+      return;
+    }
+    if (node.type === "TimelinePinEntry") {
+      pinned = true;
+      for (const k of Object.keys(node)) visit(node[k], context, retweetedBy);
+      pinned = false;
       return;
     }
     // Skip ads.
@@ -200,6 +212,7 @@ export function extractPosts(payload: Json): Post[] {
       const post = parseTweet(t, context);
       if (post) {
         if (retweetedBy) post.retweeted_by = retweetedBy;
+        if (pinned && context === "timeline") post.pinned = true;
         out.push(post);
       }
       const quoted = t.quoted_status_result?.result;

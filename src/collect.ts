@@ -41,6 +41,8 @@ export type StopReason = "max_posts" | "max_scrolls" | "end_of_feed" | "rate_lim
 export interface CollectResult {
   url: string;
   posts: Post[];
+  /** The same posts before media filters (what gets indexed, so later downloads can fetch everything). */
+  unfiltered?: Post[];
   scrolls: number;
   apiResponses: number;
   stopReason: StopReason;
@@ -144,7 +146,14 @@ function matcher(spec?: string): ((s: string) => boolean) | undefined {
   if (!spec?.trim()) return undefined;
   const re = spec.match(/^\/(.+)\/([a-z]*)$/);
   if (re) {
-    const r = new RegExp(re[1], re[2].includes("i") ? re[2] : re[2] + "i");
+    // Drop g/y: a stateful regex would skip every other post.
+    const flags = [...new Set((re[2] + "i").replace(/[gy]/g, ""))].join("");
+    let r: RegExp;
+    try {
+      r = new RegExp(re[1], flags);
+    } catch (e) {
+      throw new Error(`invalid match regex ${spec}: ${(e as Error).message}`);
+    }
     return (s) => r.test(s);
   }
   const terms = spec.toLowerCase().split(",").map((t) => t.trim()).filter(Boolean);
@@ -185,6 +194,10 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
   const ops = OPS[o.source];
   const test = matcher(o.match);
   const sinceMs = o.since ? Date.parse(o.since) : NaN;
+  if (o.since && Number.isNaN(sinceMs)) throw new Error(`since must be an ISO date, got "${o.since}"`);
+  // Only feeds in date order can stop early on `since`; elsewhere it just filters.
+  const chronological =
+    ["following", "user", "user_media", "list"].includes(o.source) || (o.source === "search" && (o.searchMode ?? "latest") === "latest");
 
   const cookies = await page.context().cookies("https://x.com");
   if (!cookies.some((c) => c.name === "auth_token" && c.value)) throw new NotLoggedInError();
@@ -199,11 +212,12 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
   let rateLimited = false;
   let oldestTimelineMs = Infinity;
   let lastOp: string | undefined;
+  let done = false; // once finished, late responses must not change the result
 
   const accept = (p: Post) => {
-    if (seen.has(p.id)) return;
+    if (done || seen.has(p.id)) return;
     seen.add(p.id);
-    if (p.context === "timeline" && p.created_at) oldestTimelineMs = Math.min(oldestTimelineMs, Date.parse(p.created_at));
+    if (p.context === "timeline" && !p.pinned && p.created_at) oldestTimelineMs = Math.min(oldestTimelineMs, Date.parse(p.created_at));
     const kept = applyFilters(p, o, test);
     if (!kept || accepted.length >= o.maxPosts) return;
     accepted.push(kept);
@@ -225,19 +239,19 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
     }
     if (!resp.ok()) return;
     const task = (async () => {
-      let json: unknown;
       try {
-        json = await resp.json();
+        const json: unknown = await resp.json();
+        if (done) return;
+        apiResponses++;
+        const posts = extractPosts(json);
+        if (isFeed) {
+          feedResponses++;
+          for (const p of posts) if (!raw.has(p.id)) raw.set(p.id, p);
+          if (o.source !== "post") posts.forEach(accept);
+        } else for (const p of posts) if (!fallback.has(p.id)) fallback.set(p.id, p);
       } catch {
-        return;
+        /* unreadable or unexpected payload: skip it */
       }
-      apiResponses++;
-      const posts = extractPosts(json);
-      if (isFeed) {
-        feedResponses++;
-        for (const p of posts) if (!raw.has(p.id)) raw.set(p.id, p);
-        if (o.source !== "post") posts.forEach(accept);
-      } else for (const p of posts) if (!fallback.has(p.id)) fallback.set(p.id, p);
     })();
     pending.add(task);
     void task.finally(() => pending.delete(task));
@@ -250,16 +264,20 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
   };
 
   const finish = (stopReason: StopReason, scrolls: number): CollectResult => {
-    let posts = accepted;
-    if (!posts.length && fallback.size) {
-      // X probably renamed the feed operation — use whatever posts the page loaded.
-      for (const p of fallback.values()) accept(p);
-      posts = accepted;
+    if (feedResponses === 0 && fallback.size) {
+      // The feed's own operation never answered (X probably renamed it): use what the page loaded.
+      for (const p of fallback.values()) {
+        raw.set(p.id, p);
+        accept(p);
+      }
     }
+    done = true;
+    const posts = [...accepted];
     const rl = lastOp ? rateLimits.get(lastOp) : undefined;
     return {
       url,
       posts,
+      unfiltered: posts.map((p) => raw.get(p.id) ?? p),
       scrolls,
       apiResponses,
       stopReason,
@@ -281,12 +299,11 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
     }
     if (LOGIN_URL_RE.test(page.url())) throw new NotLoggedInError();
 
-    if (o.source === "following") {
-      await page
-        .getByRole("tab", { name: /^Following$/ })
-        .first()
-        .click({ timeout: 15_000 })
-        .catch(() => undefined);
+    if (o.source === "following" || o.source === "home") {
+      // X remembers the last Home tab per profile, so always pick the one we want.
+      const tab = page.getByRole("tab", { name: o.source === "following" ? /^Following$/ : /^For you$/ }).first();
+      const selected = await tab.getAttribute("aria-selected", { timeout: 15_000 }).catch(() => null);
+      if (selected !== "true") await tab.click({ timeout: 5_000 }).catch(() => undefined);
     }
 
     await waitForFeed(0, 20_000);
@@ -297,7 +314,8 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
       const all = [...raw.values(), ...fallback.values()];
       const main = all.find((p) => p.id === id);
       const quoted = main?.quoted_post_id ? all.find((p) => p.id === main.quoted_post_id) : undefined;
-      return { ...finish("single_post", 0), posts: [main, quoted].filter((p): p is Post => !!p) };
+      const posts = [main, quoted].filter((p): p is Post => !!p);
+      return { ...finish("single_post", 0), posts, unfiltered: posts };
     }
 
     let scrolls = 0;
@@ -305,7 +323,7 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
     while (true) {
       if (accepted.length >= o.maxPosts) return finish("max_posts", scrolls);
       if (scrolls >= o.maxScrolls) return finish("max_scrolls", scrolls);
-      if (oldestTimelineMs < sinceMs) return finish("reached_since", scrolls);
+      if (chronological && oldestTimelineMs < sinceMs) return finish("reached_since", scrolls);
       if (rateLimited) {
         const rl = lastOp ? rateLimits.get(lastOp) : undefined;
         const waitS = rl ? rl.reset - Date.now() / 1000 + 2 : Infinity;
@@ -333,6 +351,7 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
       } else stalls = 0;
     }
   } finally {
+    done = true;
     page.off("response", onResponse);
   }
 }

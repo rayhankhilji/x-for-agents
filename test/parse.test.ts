@@ -5,6 +5,8 @@ import { extractPosts } from "../src/parse.ts";
 import { parseCookies } from "../src/browser.ts";
 import { applyFilters, postIdFrom, sourceUrl } from "../src/collect.ts";
 import { kfmt, rows } from "../src/format.ts";
+import { PostStore } from "../src/store.ts";
+import { selectFromRun } from "../src/server.ts";
 import { mediaPath } from "../src/download.ts";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/home_timeline.json", import.meta.url), "utf8"));
@@ -97,4 +99,42 @@ test("compact rows are terse", () => {
   assert.equal(lines[1], "1|1001|photog|26-11-10|10|12.3k|2p|Sunset & sea");
   assert.match(lines.at(-1)!, /\+2 more/);
   assert.equal(kfmt(1_250_000), "1.3M");
+});
+
+test("user objects are never mistaken for posts", () => {
+  const people = { data: { items: [{ user_results: { result: { __typename: "User", rest_id: "42", legacy: { screen_name: "someone", entities: { description: {} }, created_at: "Mon Jan 01 00:00:00 +0000 2010" } } } }] } };
+  assert.equal(extractPosts(people).length, 0);
+});
+
+test("pinned posts are flagged so they can't end a `since` run", () => {
+  const payload = { instructions: [{ type: "TimelinePinEntry", entry: { content: { itemContent: { tweet_results: { result: fixture.data.home.home_timeline_urt.instructions[0].entries[0].content.itemContent.tweet_results.result } } } } }] };
+  const [p] = extractPosts(payload);
+  assert.equal(p.pinned, true);
+  assert.equal(byId["1001"].pinned, undefined);
+});
+
+test("bad dates don't throw", () => {
+  const t = JSON.parse(JSON.stringify(fixture));
+  t.data.home.home_timeline_urt.instructions[0].entries[0].content.itemContent.tweet_results.result.legacy.created_at = "not a date";
+  assert.equal(extractPosts(t)[0].created_at, undefined);
+});
+
+test("regex filters are stateless (/g) and invalid ones explain themselves", () => {
+  const f = { mediaOnly: false, includeQuoted: true, includeRetweets: true, match: "/sunset/g" };
+  const results = [1, 2, 3, 4].map(() => !!applyFilters(byId["1001"], f));
+  assert.deepEqual(results, [true, true, true, true]);
+  assert.throws(() => applyFilters(byId["1001"], { ...f, match: "/(/" }), /invalid match regex/);
+});
+
+test("run ids don't collide inside a batch", () => {
+  const s = new PostStore();
+  const ids = new Set(Array.from({ length: 20000 }, () => s.newRunId()));
+  assert.equal(ids.size, 20000);
+});
+
+test("selection letters pick single media; whole rows win; row 0 ignored", () => {
+  const list = [byId["1001"], byId["1002"]];
+  assert.deepEqual(selectFromRun(list, "1b").map((p) => p.media.map((m) => m.index)), [[1]]);
+  assert.deepEqual(selectFromRun(list, "1a,1").map((p) => p.media.length), [2]);
+  assert.deepEqual(selectFromRun(list, "0,2").map((p) => p.id), ["1002"]);
 });

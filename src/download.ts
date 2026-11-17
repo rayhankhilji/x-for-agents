@@ -116,12 +116,19 @@ export function resolveFfmpeg(opts: { install?: boolean } = { install: true }): 
 // ---------------------------------------------------------------- fetchers
 
 async function fetchToFile(url: string, dest: string): Promise<number> {
-  const res = await fetch(url, { dispatcher, headers: { "user-agent": UA, referer: "https://x.com/" } });
-  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+  const signal = AbortSignal.timeout(config.downloadTimeoutMs);
   const tmp = `${dest}.part`;
-  await pipeline(Readable.fromWeb(res.body as any), fs.createWriteStream(tmp));
-  fs.renameSync(tmp, dest);
-  return fs.statSync(dest).size;
+  try {
+    const res = await fetch(url, { dispatcher, signal, headers: { "user-agent": UA, referer: "https://x.com/" } });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    await pipeline(Readable.fromWeb(res.body as any), fs.createWriteStream(tmp), { signal });
+    fs.renameSync(tmp, dest);
+    return fs.statSync(dest).size;
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    if ((e as Error).name === "TimeoutError" || signal.aborted) throw new Error(`timed out after ${config.downloadTimeoutMs / 1000}s`);
+    throw e;
+  }
 }
 
 async function hlsToFile(url: string, dest: string): Promise<number> {
@@ -134,8 +141,19 @@ async function hlsToFile(url: string, dest: string): Promise<number> {
     });
     let err = "";
     p.stderr.on("data", (d) => (err += d));
-    p.on("error", reject);
-    p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg: ${err.slice(0, 200)}`))));
+    const t = setTimeout(() => p.kill("SIGKILL"), config.downloadTimeoutMs);
+    p.on("error", (e) => {
+      clearTimeout(t);
+      reject(e);
+    });
+    p.on("exit", (code, sig) => {
+      clearTimeout(t);
+      if (code === 0) resolve();
+      else reject(new Error(sig === "SIGKILL" ? "ffmpeg timed out" : `ffmpeg: ${err.slice(0, 200)}`));
+    });
+  }).catch((e) => {
+    fs.rmSync(tmp, { force: true });
+    throw e;
   });
   fs.renameSync(tmp, dest);
   return fs.statSync(dest).size;
@@ -146,10 +164,11 @@ async function downloadOne(post: Post, m: Media, baseDir: string): Promise<Downl
   const base = { post_id: post.id, author: post.author.handle, media_key: m.key, type: m.type, url: m.url };
   if (fs.existsSync(dest)) return { ...base, path: dest, bytes: fs.statSync(dest).size, status: "exists" };
   const running = inflight.get(dest);
-  if (running) return running;
+  // Someone else is already fetching this file: share it, but don't count it twice.
+  if (running) return running.then((r) => (r.status === "downloaded" ? { ...r, status: "exists" } : r));
   const job = slots.run(async (): Promise<DownloadResult> => {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
     try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
       const bytes = /\.m3u8(\?|$)/.test(m.url) ? await hlsToFile(m.url, dest) : await fetchToFile(m.url, dest);
       return { ...base, path: dest, bytes, status: "downloaded" };
     } catch (e) {
@@ -164,7 +183,8 @@ async function downloadOne(post: Post, m: Media, baseDir: string): Promise<Downl
     }
   });
   inflight.set(dest, job);
-  void job.finally(() => inflight.delete(dest));
+  const cleanup = () => void inflight.delete(dest);
+  job.then(cleanup, cleanup);
   return job;
 }
 

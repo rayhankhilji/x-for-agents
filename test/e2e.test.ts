@@ -139,7 +139,7 @@ test("x_batch: 10 feeds in parallel tabs, streaming downloads into the project",
   const ms = Date.now() - t0;
   const out = text(r);
   console.log(out.split("\n").slice(0, 4).join("\n"), `\n(${ms}ms, ${out.length} chars)`);
-  assert.match(out, /batch: 10 jobs · 600 posts/);
+  assert.match(out, /batch run r[0-9a-f]{8} .* 10 jobs · 600 posts/);
   assert.match(out, /files: 720 new, 0 had, 0 failed/); // 60 posts × (1 photo, +1 video every 5th)
   assert.equal(pool.stats.open, 10);
   const dir = path.join(process.env.CLAUDE_PROJECT_DIR!, "assets/x");
@@ -147,6 +147,10 @@ test("x_batch: 10 feeds in parallel tabs, streaming downloads into the project",
   assert.equal(files.length, 720);
   assert.ok(r.structuredContent.items.length > 0, "gallery data when UI is supported");
   assert.ok(out.length < 1500, "batch summary stays small");
+  const batchRun = out.match(/batch run (r[0-9a-f]{8})/)![1];
+  assert.equal(r.structuredContent.run, batchRun, "gallery selections map to the combined run");
+  const pv: any = await client.callTool({ name: "x_preview", arguments: { run: batchRun, rows: "1-12" } });
+  assert.ok(pv.content.some((c: any) => c.type === "image"), "batch run is previewable");
 });
 
 test("more concurrent calls than tabs: extra calls queue for a free tab and all finish", async () => {

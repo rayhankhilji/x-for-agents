@@ -56,7 +56,7 @@ Chromium is found automatically: Playwright's own, `/opt/pw-browsers` on cloud i
 
 ## Claude chat (claude.ai / Claude Desktop): native gallery
 
-Run it as a remote MCP server and add it as a **custom connector**:
+Run it as a remote MCP server and add it as a **custom connector**. A token is required for anything that isn't on the same machine:
 
 ```bash
 X_MCP_TOKEN=$(openssl rand -hex 16) npx x-for-agents serve --http --port 8787
@@ -71,9 +71,9 @@ X_MCP_TOKEN=$(openssl rand -hex 16) npx x-for-agents serve --http --port 8787
 | Tool | Purpose |
 |---|---|
 | `x_collect` | One feed: scroll, filter, download. Returns `run <id>` and numbered rows. |
-| `x_batch` | Many feeds in parallel (up to 50 jobs, `X_TABS` tabs). One line per job. |
+| `x_batch` | Many feeds in parallel (up to 50 jobs, `X_TABS` tabs). One line per job, plus a combined `batch run` you can preview or download from. |
 | `x_preview` | Contact sheet of a run's media (labels = row numbers, `3b` = 2nd media of row 3). |
-| `x_download` | Download rows of a run (`"2,5,9-12"`) or post IDs/URLs, optionally into the repo. |
+| `x_download` | Download rows of a run (`"2,5b,9-12"`, where a letter means one media item of that post) or post IDs/URLs, optionally into the repo. |
 | `x_status` | Login, account, tabs, rate limits, ffmpeg, output dir. |
 
 Sources: `home`, `following`, `user`, `user_media` (best for everything someone posted), `search` (X operators work: `from:nasa filter:videos since:2026-01-01`; `search_mode` latest/top/media), `bookmarks`, `likes`, `list`, `post`, `url`.
@@ -109,8 +109,9 @@ Only needed for the rare video that has no MP4 version (HLS stream only). When t
 | `X_BLOCK_MEDIA` | `true` | Don't render media while scrolling |
 | `X_SCROLL_DELAY_MS` / `X_RESPONSE_WAIT_MS` | `150` / `2500` | Scroll pacing |
 | `X_DOWNLOAD_CONCURRENCY` | `8` | |
+| `X_DOWNLOAD_TIMEOUT_MS` | `600000` | Hard cap per file, so a stalled stream can't hang a run |
 | `X_BROWSER_PATH`, `X_BROWSER_CHANNEL` | auto | Use a specific Chrome |
-| `X_MCP_TOKEN` | | Required token for `serve --http` |
+| `X_MCP_TOKEN` | | Token for `serve --http`. Without it, only requests from the same machine are accepted. |
 | `X_UI` | auto | `always` / `never` send gallery data |
 
 ## Limits and terms
@@ -122,5 +123,6 @@ Only needed for the rare video that has no MP4 version (HLS stream only). When t
 ## Development
 
 ```bash
-npm test     # parser/filter unit tests + e2e against a mock x.com (10 parallel tabs, downloads, previews)
+npm test     # unit tests, e2e against a mock x.com (10 parallel tabs, queueing, downloads, previews),
+             # and robustness tests that try to crash the real server (malformed HTTP, DNS rebinding, bad paths)
 ```

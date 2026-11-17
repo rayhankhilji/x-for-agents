@@ -262,6 +262,7 @@ export async function whoAmI(page: Page): Promise<{ loggedIn: boolean; handle?: 
 export class BrowserPool {
   private ctx: BrowserContext | null = null;
   private starting: Promise<BrowserContext> | null = null;
+  private closing: Promise<void> | null = null;
   private free: Page[] = [];
   private total = 0;
   private busy = 0;
@@ -278,10 +279,13 @@ export class BrowserPool {
     if (this.ctx) return this.ctx;
     if (!this.starting) {
       this.starting = (async () => {
+        // Never launch on the profile while the previous browser is still shutting down (profile lock).
+        if (this.closing) await this.closing;
         const ctx = await launchContext();
         const cookies = envCookies();
         if (cookies.length) await importCookies(ctx, cookies);
         ctx.on("close", () => {
+          if (this.ctx !== ctx) return; // a late event from a browser we already replaced
           this.ctx = null;
           this.free = [];
           this.total = 0;
@@ -305,10 +309,20 @@ export class BrowserPool {
       });
     }
     page.on("close", () => {
+      if (this.ctx !== ctx) return;
       this.total = Math.max(0, this.total - 1);
       this.free = this.free.filter((p) => p !== page);
     });
+    // A crashed renderer never reports isClosed(); close it so it is never handed out again.
+    page.on("crash", () => void page.close().catch(() => undefined));
     return page;
+  }
+
+  private scheduleIdle() {
+    if (this.busy !== 0) return;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => void this.close(), config.idleCloseMs);
+    this.idleTimer.unref();
   }
 
   async acquire(): Promise<Page> {
@@ -325,6 +339,7 @@ export class BrowserPool {
       } catch (e) {
         this.total--;
         this.busy--;
+        this.scheduleIdle();
         throw e;
       }
     }
@@ -342,34 +357,39 @@ export class BrowserPool {
       this.newTab().then(w.resolve, (e) => {
         this.total--;
         this.busy--;
+        this.scheduleIdle();
         w.reject(e);
       });
       return;
     }
     if (!page.isClosed()) this.free.push(page);
-    if (this.busy === 0) {
-      this.idleTimer = setTimeout(() => void this.close(), config.idleCloseMs);
-      this.idleTimer.unref();
-    }
+    this.scheduleIdle();
   }
 
   async withPage<T>(fn: (page: Page, ctx: BrowserContext) => Promise<T>): Promise<T> {
     const page = await this.acquire();
     try {
-      return await fn(page, this.ctx!);
+      return await fn(page, page.context());
     } finally {
       this.release(page);
     }
   }
 
-  /** A throwaway tab with normal resource loading (for rendering previews). */
+  /** A throwaway tab with normal resource loading (for rendering previews). Counts as busy. */
   async withScratchPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
-    const ctx = await this.context();
-    const page = await ctx.newPage();
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.busy++;
     try {
-      return await fn(page);
+      const ctx = await this.context();
+      const page = await ctx.newPage();
+      try {
+        return await fn(page);
+      } finally {
+        await page.close().catch(() => undefined);
+      }
     } finally {
-      await page.close().catch(() => undefined);
+      this.busy--;
+      this.scheduleIdle();
     }
   }
 
@@ -378,6 +398,10 @@ export class BrowserPool {
     this.ctx = null;
     this.free = [];
     this.total = 0;
-    if (ctx) await ctx.close().catch(() => undefined);
+    if (ctx) {
+      this.closing = ctx.close().catch(() => undefined);
+      await this.closing;
+      this.closing = null;
+    }
   }
 }

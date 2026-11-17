@@ -104,7 +104,7 @@ async function runJob(j: Job, out: { download?: boolean; output_dir?: string; ra
     };
   }
   const result = await pool.withPage((page) => collect(page, opts));
-  store.add(result.posts);
+  store.add(result.unfiltered ?? result.posts);
   let downloads: DownloadResult[] | undefined;
   if (download) {
     const rest = result.posts.filter((p) => !started.has(p.id));
@@ -138,7 +138,7 @@ function parseRows(spec: string | undefined, max: number): number[] {
     if (!r) continue;
     const a = Number(r[1]);
     const b = r[2] ? Number(r[2]) : a;
-    for (let i = a; i <= Math.min(b, max); i++) out.add(i);
+    for (let i = Math.max(1, a); i <= Math.min(b, max); i++) out.add(i);
   }
   return [...out].sort((x, y) => x - y);
 }
@@ -245,19 +245,29 @@ export function buildServer(): McpServer {
       const detail: Detail = a.detail ?? "summary";
       const allPosts = outcomes.flatMap((o) => o.result.posts);
       const allDl = outcomes.flatMap((o) => o.downloads ?? []);
-      const head = `batch: ${outcomes.length} jobs · ${allPosts.length} posts · ${((Date.now() - t0) / 1000).toFixed(1)}s` +
+      // One combined run, so preview labels and gallery selections map to real rows.
+      const batchId = store.newRunId();
+      store.saveRun({
+        id: batchId,
+        label: `batch of ${outcomes.length}`,
+        created_at: new Date().toISOString(),
+        jobs: outcomes.map((o) => o.id),
+        posts: allPosts,
+        files: allDl.filter((d) => d.path).map((d) => ({ post: d.post_id, key: d.media_key, path: d.path })),
+      });
+      const head = `batch run ${batchId} (rows = all jobs in order) · ${outcomes.length} jobs · ${allPosts.length} posts · ${((Date.now() - t0) / 1000).toFixed(1)}s` +
         (a.download ?? true ? "\n" + downloadLine(allDl, resolveOutDir(a.output_dir)) : "");
       const body = outcomes
         .map((o) => (o.error ? `✗ ${o.label}: ${o.error}` : renderOutcome(o, detail, a.text_chars ?? 60, true)))
         .join(detail === "summary" ? "\n" : "\n\n");
       const content: Content[] = [{ type: "text", text: `${head}\n${body}` }];
       if (a.preview) {
-        const img = await preview(allPosts.slice(0, 60), 1);
+        const img = await preview(allPosts.slice(0, 60), 1, store.getRun(batchId));
         if (img) content.push(img);
       }
       return {
         content,
-        ...(wantsUi() ? { structuredContent: galleryData(outcomes.map((o) => o.id).join(","), `Batch · ${outcomes.length} feeds`, allPosts) as any } : {}),
+        ...(wantsUi() ? { structuredContent: galleryData(batchId, `Batch · ${outcomes.length} feeds`, allPosts) as any } : {}),
       };
     },
   );
@@ -420,6 +430,10 @@ export async function serveStdio() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   transport.onclose = () => void shutdown();
+  // The stdio transport doesn't notice the client going away; without this the orphaned
+  // server keeps the browser profile locked and the next launch fails.
+  process.stdin.on("end", () => void shutdown());
+  process.stdin.on("close", () => void shutdown());
   await server.connect(transport);
   console.error(`[x-for-agents] MCP ready · tabs=${config.tabs} · output=${displayPath(resolveOutDir())}`);
 }

@@ -5,7 +5,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (cmd, args) => {
@@ -20,4 +20,4 @@ const newest = (dir) =>
 if (newest(path.join(root, "src")) > newest(path.join(root, "dist"))) run(npm, ["run", "--silent", "build"]);
 
 process.env.CLAUDE_PROJECT_DIR ??= process.cwd();
-await import(path.join(root, "dist/index.js"));
+await import(pathToFileURL(path.join(root, "dist/index.js")).href);

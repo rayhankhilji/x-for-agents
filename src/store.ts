@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { collectionsDir, config, indexFile } from "./config.js";
 import type { Post } from "./parse.js";
@@ -60,7 +61,7 @@ export class PostStore {
   }
 
   newRunId(): string {
-    return "r" + Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 4);
+    return "r" + randomUUID().replace(/-/g, "").slice(0, 8);
   }
 
   saveRun(run: Run): string {
