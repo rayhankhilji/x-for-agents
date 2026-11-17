@@ -1,128 +1,166 @@
-# x-for-agents
+# Riffler
 
-Let Claude browse **X with your own account**, scroll **up to 10 feeds at once**, and pull **images, videos and posts**. It's fast, uses few tokens, and works in local Claude Code, cloud/web Claude Code, and Claude chat.
+**Let the feed run. Keep the originals.**
 
-```
-Claude ──MCP──▶ x-for-agents ──▶ 1 headless Chromium, 1 X login, up to 10 tabs
-                    │                 each tab scrolls a feed; images/video/fonts are NOT loaded
-                    │◀── X's own GraphQL JSON (UserMedia, SearchTimeline, HomeTimeline…)
-                    ├─▶ filter server-side (keywords/regex, likes, views, size, duration, date)
-                    ├─▶ download while still scrolling → ./x-media/<handle>/<postId>_<n>.jpg|mp4
-                    └─▶ back to Claude: one header line + numbered rows (+ optional contact sheet)
-```
+Riffler is a free MCP server. It lets Claude scroll X with your own account, ten tabs at once, and
+puts the full-size images, best-quality videos and post data straight into your project.
 
-**Not computer use.** Claude never looks at screenshots of X. The server reads the same JSON the X web app loads, which includes original-size image URLs and every video bitrate. So it's fast and exact, and Claude only spends tokens on what it actually needs to see.
-
-## Why it's fast and cheap
-
-| | |
-|---|---|
-| **Parallel** | `x_batch` runs up to 50 jobs over 10 tabs (`X_TABS`) on one login. Separate `x_collect` calls also run concurrently. |
-| **Fast scrolling** | No human-pace delays. Each scroll waits only until X returns the next page, and images, video and fonts are never rendered. |
-| **Overlapped downloads** | Media starts downloading the moment a post appears (8 in parallel); originals for images, highest-bitrate MP4s for video. |
-| **Token-lean output** | Default output is a header plus pipe-separated rows. A 10-feed / 600-post / 720-file batch returns about 250 tokens. Use `detail: "summary"` for even less, or `"full"` for JSON. |
-| **Cheap vision** | `x_preview` (or `preview: true`) returns one contact-sheet JPEG with up to 60 numbered thumbnails, about 700–1,500 tokens instead of 60 images. Claude can judge content, then `x_download` the rows it wants. |
-| **Rate-limit aware** | Reads X's `x-rate-limit-*` headers. It stops cleanly (or waits, with `rate_limit_wait_s`) and reports what's left. |
-
-## Install: local Claude Code
+Claude never looks at a screenshot of X. It reads the data X's own web app loads and gets back one
+line per run. When it needs to see, it gets one contact sheet of up to 60 numbered thumbnails.
 
 ```bash
-git clone https://github.com/rayhankhilji/x-for-agents && cd x-for-agents
-npm install && npm run build
-npx x-for-agents login          # a browser window opens; sign in to X once
-claude mcp add x -- node "$PWD/dist/index.js"
+npx -y github:rayhankhilji/x-for-agents login
 ```
 
-Media goes to `./x-media` inside whatever project Claude Code is working in when `X_OUTPUT_DIR=x-media` is set. Otherwise it goes to `~/x-for-agents-data/media`. Any `output_dir` argument that's a relative path also lands inside the current repo.
+That opens a browser window. Sign in to X once and it closes. Then add Riffler to your client
+(below) and ask, for example: *"Pull every video @nasa posted this month into ./assets/space."*
 
-Once published to npm, any project can just use `.mcp.json.example`:
+- **Ten tabs, one login.** `x_batch` runs up to 50 feeds across 10 tabs (`X_TABS`, max 20).
+- **Data, not pixels.** No screenshots of X are read; images, video and fonts are never even rendered.
+- **Cheap to read.** A 10-feed, 600-post, 720-file batch comes back as about 250 tokens. One contact
+  sheet of 60 thumbnails costs about 700 to 1,500.
+- **Files in your repo.** `x-media/<handle>/<postId>_<n>.jpg|png|mp4`, original size, best bitrate.
+- **Free.** MIT. No API key, no paid tier, no account with us.
+
+## Before you start: the honest part
+
+- **Use a spare account for big runs.** X can lock accounts that read this fast. All ten tabs share
+  one account's limits.
+- **Your cookies stay with you.** Locally, `login` keeps your session in `~/.riffler/profile`. In
+  cloud sessions, put `X_AUTH_TOKEN` and `X_CT0` in the environment's settings. Never paste them
+  into a chat or commit them.
+- **X's rate limits are the ceiling, not the tab count.** Riffler reads X's limit headers, stops
+  cleanly and tells you when the window resets.
+- **Automating an account is against X's terms.** Riffler only reads, but the risk is yours.
+
+## Add it to your client
+
+Every snippet runs Riffler straight from GitHub. (Once it's on npm: `npx -y riffler`.)
+
+**Claude Code**
+
+```bash
+claude mcp add --transport stdio riffler -- npx -y github:rayhankhilji/x-for-agents
+```
+
+Or commit a `.mcp.json` so the whole team (and cloud sessions) get it:
 
 ```json
-{ "mcpServers": { "x": { "command": "npx", "args": ["-y", "x-for-agents@latest"], "env": { "X_OUTPUT_DIR": "x-media" } } } }
+{
+  "mcpServers": {
+    "riffler": {
+      "command": "npx",
+      "args": ["-y", "github:rayhankhilji/x-for-agents"],
+      "env": { "X_OUTPUT_DIR": "x-media", "X_AUTH_TOKEN": "${X_AUTH_TOKEN}", "X_CT0": "${X_CT0}" }
+    }
+  }
+}
 ```
 
-## Cloud / web Claude Code (claude.ai/code)
+**Claude Desktop**: Settings → Developer → Edit Config (`claude_desktop_config.json`), then quit
+and reopen.
 
-There's no screen to log in on, so give it your X cookies through the environment instead.
+```json
+{
+  "mcpServers": {
+    "riffler": { "command": "npx", "args": ["-y", "github:rayhankhilji/x-for-agents"] }
+  }
+}
+```
 
-1. In a browser where you're logged in to X, open DevTools, then Application, then Cookies, then `https://x.com`. Copy `auth_token` and `ct0`.
-2. Open the cloud environment's settings (the environment menu in the session's title bar, then **Edit**). Add the environment variables `X_AUTH_TOKEN` and `X_CT0`. Don't paste them into chat.
-3. Network access: if the environment uses a limited allowlist, add `x.com`, `twimg.com`, `pbs.twimg.com`, `video.twimg.com` and `abs.twimg.com`.
-4. Commit a `.mcp.json` to the repo:
-   - **This repo** already has one. It runs `scripts/launch.mjs`, which installs dependencies and builds on first start.
-   - **Other repos** use the `npx` config above.
-
-Chromium is found automatically: Playwright's own, `/opt/pw-browsers` on cloud images, or system Chrome. If none is found, it's installed on first use. Check everything with `npx x-for-agents doctor`.
-
-## Claude chat (claude.ai / Claude Desktop): native gallery
-
-Run it as a remote MCP server and add it as a **custom connector**. A token is required for anything that isn't on the same machine:
+**Codex** (CLI, IDE extension and desktop app share `~/.codex/config.toml`)
 
 ```bash
-X_MCP_TOKEN=$(openssl rand -hex 16) npx x-for-agents serve --http --port 8787
-# expose it, e.g.: cloudflared tunnel --url http://localhost:8787
-# connector URL: https://<your-tunnel>/mcp/<X_MCP_TOKEN>
+codex mcp add riffler -- npx -y github:rayhankhilji/x-for-agents
 ```
 
-`x_collect`, `x_batch` and `x_preview` ship an **MCP App** (`ui://x-for-agents/gallery.html`). In hosts that support MCP Apps, results render as an interactive gallery: filter by photos, videos or GIFs, play videos inline, open posts, download single items, and select items and send them back to Claude. Gallery data is only sent to clients that support the UI, so Claude Code doesn't pay tokens for it.
+**Cursor**: `.cursor/mcp.json` in the project, or `~/.cursor/mcp.json`
 
-## Tools
+```json
+{
+  "mcpServers": {
+    "riffler": { "type": "stdio", "command": "npx", "args": ["-y", "github:rayhankhilji/x-for-agents"] }
+  }
+}
+```
 
-| Tool | Purpose |
+**VS Code** (Copilot): `.vscode/mcp.json`. Note the key is `servers`.
+
+```json
+{
+  "servers": {
+    "riffler": { "type": "stdio", "command": "npx", "args": ["-y", "github:rayhankhilji/x-for-agents"] }
+  }
+}
+```
+
+**Zed**: `zed: open settings file`, then `"context_servers": { "riffler": { "command": "npx", "args": ["-y", "github:rayhankhilji/x-for-agents"] } }`
+
+**Cline**: MCP Servers → Configure → `cline_mcp_settings.json`, same `mcpServers` block as Cursor
+(without `type`).
+
+**Gemini CLI**: `~/.gemini/settings.json`, same `mcpServers` block. Gemini CLI hides inherited
+variables whose names contain `TOKEN` or `AUTH`, so if you use cookie env vars, set them inside the
+server's own `env`.
+
+If you signed in with `login`, no cookie variables are needed. For cloud sessions, add
+`"env": { "X_AUTH_TOKEN": "...", "X_CT0": "..." }` using your client's own secret mechanism.
+
+**claude.ai (web)** only accepts remote servers: run `X_MCP_TOKEN=<random> npx -y
+github:rayhankhilji/x-for-agents serve --http`, put it behind an HTTPS tunnel you control, and add
+`https://<tunnel>/mcp/<token>` as a custom connector. Without a token, only requests from the same
+machine are accepted.
+
+## The tools
+
+| Tool | What it does |
 |---|---|
-| `x_collect` | One feed: scroll, filter, download. Returns `run <id>` and numbered rows. |
-| `x_batch` | Many feeds in parallel (up to 50 jobs, `X_TABS` tabs). One line per job, plus a combined `batch run` you can preview or download from. |
-| `x_preview` | Contact sheet of a run's media (labels = row numbers, `3b` = 2nd media of row 3). |
-| `x_download` | Download rows of a run (`"2,5b,9-12"`, where a letter means one media item of that post) or post IDs/URLs, optionally into the repo. |
-| `x_status` | Login, account, tabs, rate limits, ffmpeg, output dir. |
+| `x_collect` | Scroll one feed, filter, download. Returns `run <id>` and numbered rows. |
+| `x_batch` | Up to 50 feeds in parallel. One line per feed, plus a combined run. |
+| `x_preview` | One contact sheet of a run's media. `3b` = the second item of row 3. |
+| `x_download` | Download rows of a run (`"2,5b,9-12"`) or posts by URL, into any folder. |
+| `x_status` | Login, account, tabs, rate limits, ffmpeg, output folder. |
 
-Sources: `home`, `following`, `user`, `user_media` (best for everything someone posted), `search` (X operators work: `from:nasa filter:videos since:2026-01-01`; `search_mode` latest/top/media), `bookmarks`, `likes`, `list`, `post`, `url`.
+Sources: `home`, `following`, `user`, `user_media` (everything someone posted), `search` (X
+operators work: `from:nasa filter:videos since:2026-01-01`), `bookmarks`, `likes`, `list`, `post`,
+`url`. Filters: `media_types`, `match` (`"cat,dog"` or `"/regex/"`), `min_likes`, `min_views`,
+`min_size`, `min_duration_s`, `max_duration_s`, `lang`, `since`.
 
-Filters: `media_types`, `match` (`"cat,dog"` or `"/regex/"` on text and alt text), `min_likes`, `min_views`, `min_size`, `min_duration_s`, `max_duration_s`, `lang`, `since`, `include_retweets`, `include_quoted`, `media_only`.
+In clients that support MCP Apps, such as Claude Desktop and claude.ai, results can also render as a gallery you can filter, play and pick from.
 
-### Example prompts
+## Cloud and web Claude Code
 
-- "Pull every video from @nasa, @spacex, @esa, @jaxa_en and @isro this month into ./assets/space."
-- "Search `#midjourney filter:images` (top), preview the first 60, keep only the photorealistic ones."
-- "Download all my bookmarks' media into the repo."
+There is no screen to sign in on, so: in the cloud environment's settings add `X_AUTH_TOKEN` and
+`X_CT0` (from your browser: DevTools → Application → Cookies → x.com), allow `x.com` and `twimg.com`
+if the network is limited, and commit the `.mcp.json` above. Riffler finds the container's Chromium
+on its own. `npx -y github:rayhankhilji/x-for-agents doctor` checks the setup.
 
-## ffmpeg
+## Settings
 
-Only needed for the rare video that has no MP4 version (HLS stream only). When that happens, the server looks for `ffmpeg` on your PATH, then in `~/.x-for-agents/tools`, and otherwise installs a static build there automatically (`npx x-for-agents setup-ffmpeg` does it up front). If that isn't possible (offline, no network), those videos are reported as failed and everything else carries on.
-
-## Output
-
-```
-<output_dir>/<handle>/<postId>_<n>.jpg|png|mp4   # deterministic names; re-runs skip existing files
-~/x-for-agents-data/runs/<runId>_<label>.json   # every run (posts, media URLs, local files)
-~/x-for-agents-data/posts.jsonl                  # index of all posts seen
-```
-
-## Config
-
-| env | default | |
+| Variable | Default | |
 |---|---|---|
 | `X_TABS` | `10` | Parallel tabs (max 20) |
-| `X_OUTPUT_DIR` | `~/x-for-agents-data/media` | Relative = inside the project |
-| `X_AUTH_TOKEN`, `X_CT0`, `X_COOKIES`, `X_COOKIES_FILE` | | Cookie login (cloud, CI) |
+| `X_OUTPUT_DIR` | `~/riffler-data/media` | Relative paths land in your project |
+| `X_AUTH_TOKEN`, `X_CT0`, `X_COOKIES_FILE` | | Cookie sign-in for cloud and CI |
 | `X_HEADLESS` | `true` | `false` to watch the tabs |
-| `X_BLOCK_MEDIA` | `true` | Don't render media while scrolling |
-| `X_SCROLL_DELAY_MS` / `X_RESPONSE_WAIT_MS` | `150` / `2500` | Scroll pacing |
-| `X_DOWNLOAD_CONCURRENCY` | `8` | |
-| `X_DOWNLOAD_TIMEOUT_MS` | `600000` | Hard cap per file, so a stalled stream can't hang a run |
-| `X_BROWSER_PATH`, `X_BROWSER_CHANNEL` | auto | Use a specific Chrome |
-| `X_MCP_TOKEN` | | Token for `serve --http`. Without it, only requests from the same machine are accepted. |
-| `X_UI` | auto | `always` / `never` send gallery data |
+| `X_DOWNLOAD_TIMEOUT_MS` | `600000` | Per file, so a stalled stream can't hang a run |
+| `X_MCP_TOKEN` | | Token for `serve --http` |
 
-## Limits and terms
+Videos that exist only as a stream need ffmpeg. Riffler finds yours or installs a small static copy
+the first time one turns up.
 
-- **X's read limits are the real ceiling, not tabs.** All tabs share one account's rate limits (per endpoint, per 15 minutes). Ten tabs reach that limit sooner. The server reports the remaining budget and stops cleanly.
-- **Terms of service.** Automated access to a logged-in account is against X's ToS and can get the account restricted. Use an account you can afford to lose for heavy runs, and respect creators' rights to their media.
-- **One process per profile.** Don't run `login` while Claude Code has the server open; use another `X_HOME` if needed.
+## Credit where due
+
+[gallery-dl](https://github.com/mikf/gallery-dl) and [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+are excellent and you should use them when you're driving. Riffler is for when Claude is.
 
 ## Development
 
 ```bash
-npm test     # unit tests, e2e against a mock x.com (10 parallel tabs, queueing, downloads, previews),
-             # and robustness tests that try to crash the real server (malformed HTTP, DNS rebinding, bad paths)
+npm install && npm run build && npm test
 ```
+
+The tests run the real server against a mock of x.com (ten tabs, queueing, downloads, contact
+sheets) and robustness tests that try to crash the server.
+
+MIT licensed.
