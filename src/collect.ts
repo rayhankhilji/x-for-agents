@@ -43,6 +43,8 @@ export interface CollectResult {
   posts: Post[];
   /** The same posts before media filters (what gets indexed, so later downloads can fetch everything). */
   unfiltered?: Post[];
+  /** The feed's own request never answered; posts came from whatever else the page loaded. */
+  usedFallback?: boolean;
   scrolls: number;
   apiResponses: number;
   stopReason: StopReason;
@@ -264,7 +266,8 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
   };
 
   const finish = (stopReason: StopReason, scrolls: number): CollectResult => {
-    if (feedResponses === 0 && fallback.size) {
+    const usedFallback = feedResponses === 0 && fallback.size > 0;
+    if (usedFallback) {
       // The feed's own operation never answered (X probably renamed it): use what the page loaded.
       for (const p of fallback.values()) {
         raw.set(p.id, p);
@@ -278,6 +281,7 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
       url,
       posts,
       unfiltered: posts.map((p) => raw.get(p.id) ?? p),
+      usedFallback,
       scrolls,
       apiResponses,
       stopReason,
@@ -302,8 +306,8 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
     if (o.source === "following" || o.source === "home") {
       // X remembers the last Home tab per profile, so always pick the one we want.
       const tab = page.getByRole("tab", { name: o.source === "following" ? /^Following$/ : /^For you$/ }).first();
-      const selected = await tab.getAttribute("aria-selected", { timeout: 15_000 }).catch(() => null);
-      if (selected !== "true") await tab.click({ timeout: 5_000 }).catch(() => undefined);
+      const selected = await tab.getAttribute("aria-selected", { timeout: 4_000 }).catch(() => null);
+      if (selected === "false") await tab.click({ timeout: 4_000 }).catch(() => undefined);
     }
 
     await waitForFeed(0, 20_000);

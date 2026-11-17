@@ -49,6 +49,7 @@ export function runHeader(o: {
     const mins = Math.max(0, Math.round((r.rateLimit.reset - Date.now() / 1000) / 60));
     lines.push(`rate ${r.rateLimit.op}: ${r.rateLimit.remaining}/${r.rateLimit.limit} left, resets in ${mins}m`);
   }
+  if (r.usedFallback) lines.push("⚠ the feed's own request never answered; posts are from other parts of the page and may not be from this feed.");
   if (r.stopReason === "rate_limited") lines.push("⚠ rate limited by X — retry after reset, or pass rate_limit_wait_s.");
   return lines.join("\n");
 }

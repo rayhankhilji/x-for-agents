@@ -7,6 +7,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
+/** A non-loopback IPv4 address of this machine, if it has one. */
+const lanIp = Object.values(os.networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal)?.address;
+
 const root = path.resolve(import.meta.dirname, "..");
 const bin = path.join(root, "dist/index.js");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "xfa-rob-"));
@@ -53,6 +56,27 @@ test("HTTP server survives malformed requests and blocks DNS rebinding", async (
     assert.match(await forged("Host: evil.example"), /^HTTP\/1\.1 401/, "rebound Host rejected");
     assert.match(await forged("Host: localhost\r\nOrigin: https://evil.example"), /^HTTP\/1\.1 401/, "foreign Origin rejected");
     assert.equal(await post(port, "/mcpanything"), 404);
+  } finally {
+    child.kill();
+  }
+});
+
+test("without a token, a forged Host header from another address is rejected", { skip: !lanIp && "no LAN address" }, async () => {
+  const port = await freePort();
+  const child = spawn(process.execPath, [bin, "serve", "--http", "--host", "0.0.0.0", "--port", String(port)], { env, stdio: ["ignore", "ignore", "pipe"] });
+  await new Promise<void>((r) => child.stderr.on("data", (d) => String(d).includes("HTTP MCP") && r()));
+  try {
+    const viaLan = await new Promise<string>((resolve) => {
+      const sock = net.connect(port, lanIp!, () =>
+        sock.end(`POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: ${Buffer.byteLength(init)}\r\nConnection: close\r\n\r\n${init}`),
+      );
+      let out = "";
+      sock.on("data", (d) => (out += d));
+      sock.on("close", () => resolve(out));
+      sock.on("error", () => resolve(out));
+    });
+    assert.match(viaLan, /^HTTP\/1\.1 401/, `connection from ${lanIp} must be rejected even with Host: localhost`);
+    assert.equal(await post(port, "/mcp"), 200, "loopback still works");
   } finally {
     child.kill();
   }

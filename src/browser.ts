@@ -395,6 +395,8 @@ export class BrowserPool {
 
   async close() {
     const ctx = this.ctx;
+    // A second caller waits for the close already in progress instead of returning early.
+    if (!ctx) return this.closing ?? undefined;
     this.ctx = null;
     this.free = [];
     this.total = 0;

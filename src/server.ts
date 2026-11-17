@@ -423,10 +423,12 @@ function fail(e: unknown) {
 export async function serveStdio() {
   const server = buildServer();
   const transport = new StdioServerTransport();
-  const shutdown = async () => {
-    await pool.close();
-    process.exit(0);
-  };
+  let stopping: Promise<void> | null = null;
+  const shutdown = () =>
+    (stopping ??= (async () => {
+      await pool.close();
+      process.exit(0);
+    })());
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   transport.onclose = () => void shutdown();

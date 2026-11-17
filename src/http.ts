@@ -33,9 +33,12 @@ function authorized(req: http.IncomingMessage, pathToken: string | undefined, to
     const b = Buffer.from(token);
     return a.length === b.length && timingSafeEqual(a, b);
   }
+  // Headers can be forged by any non-browser client, so the connection itself must be local too.
+  const addr = req.socket.remoteAddress ?? "";
+  const localPeer = addr === "::1" || addr.startsWith("127.") || addr.startsWith("::ffff:127.");
   const host = hostnameOf(req.headers.host);
   const origin = req.headers.origin;
-  return !!host && LOOPBACK.has(host) && (!origin || LOOPBACK.has(hostnameOf(origin) ?? ""));
+  return localPeer && !!host && LOOPBACK.has(host) && (!origin || LOOPBACK.has(hostnameOf(origin) ?? ""));
 }
 
 async function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -86,11 +89,13 @@ export async function serveHttp(port: number, host: string) {
   srv.on("clientError", (_e, socket) => socket.destroy());
   await new Promise<void>((r) => srv.listen(port, host, r));
   console.error(`[x-for-agents] HTTP MCP on http://${host}:${port}/mcp${token ? "/<token>" : ""}`);
-  const shutdown = async () => {
-    srv.close();
-    await pool.close();
-    process.exit(0);
-  };
+  let stopping: Promise<void> | null = null;
+  const shutdown = () =>
+    (stopping ??= (async () => {
+      srv.close();
+      await pool.close();
+      process.exit(0);
+    })());
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
