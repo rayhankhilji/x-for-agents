@@ -276,3 +276,39 @@
   const open = () => { if (location.hash === '#credits') { const d = document.getElementById('credits'); if (d) d.open = true; } };
   addEventListener('hashchange', open); open();
 })();
+
+// Launch film: the poster is a native lazy image with a link to the file (works with JS off).
+// Near the viewport the <video> is built (preload none). It autoplays muted while at least half in view,
+// unless the visitor prefers reduced motion; then the poster stays with the play button.
+(() => {
+  const box = document.querySelector('[data-film]');
+  if (!box || !('IntersectionObserver' in window)) return;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let video = null;
+  const build = () => {
+    video = document.createElement('video');
+    Object.assign(video, { muted: true, loop: true, playsInline: true, preload: 'none' });
+    video.setAttribute('muted', ''); video.setAttribute('playsinline', ''); video.setAttribute('loop', ''); video.setAttribute('preload', 'none');
+    video.poster = box.querySelector('.film-poster').currentSrc || box.querySelector('.film-poster').src;
+    video.setAttribute('aria-label', 'Launch film, 38 seconds, no sound: a run from one sentence to the files in the repo');
+    for (const [type, key] of [['video/webm', 'webm'], ['video/mp4', 'mp4']]) { const s = document.createElement('source'); s.src = box.dataset[key]; s.type = type; video.append(s); }
+    box.prepend(video);
+  };
+  const play = box.querySelector('.film-play');
+  const start = (e) => {
+    if (e) e.preventDefault();
+    if (!video) build();
+    video.controls = true; play.hidden = true;
+    video.play().catch(() => { play.hidden = false; });
+  };
+  play.addEventListener('click', start);
+  const near = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting)) { if (!video) build(); near.disconnect(); } }, { rootMargin: '600px 0px' });
+  near.observe(box);
+  if (reduce) return;
+  const seen = new IntersectionObserver((es) => {
+    const e = es[es.length - 1];
+    if (e.intersectionRatio >= 0.5) start();
+    else if (video && !video.paused) video.pause();
+  }, { threshold: [0, 0.5] });
+  seen.observe(box);
+})();
