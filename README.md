@@ -1,6 +1,6 @@
 # Riffler
 
-**Let the feed run. Keep the originals.**  ·  [riffler site](https://rayhankhilji.github.io/x-for-agents/)
+**Let the feed run. Keep the originals.**  ·  [riffler.pages.dev](https://riffler.pages.dev)
 
 Riffler is a free MCP server. It lets Claude scroll X with your own account, ten tabs at once, and
 puts the full-size images, best-quality videos and post data straight into your project.
@@ -9,8 +9,10 @@ Claude never looks at a screenshot of X. It reads the data X's own web app loads
 line per run. When it needs to see, it gets one contact sheet of up to 60 numbered thumbnails.
 
 ```bash
-npx -y github:rayhankhilji/x-for-agents login
+npx -y riffler login
 ```
+
+(Not on npm yet? Use `npx -y github:rayhankhilji/x-for-agents login`; every command below works the same way.)
 
 That opens a browser window. Sign in to X once and it closes. Then add Riffler to your client
 (below) and ask, for example: *"Pull every video @nasa posted this month into ./assets/space."*

@@ -1,0 +1,4 @@
+# Cloudflare Pages: `npx wrangler pages deploy` publishes ./site to https://riffler.pages.dev
+name = "riffler"
+pages_build_output_dir = "site"
+compatibility_date = "2026-11-01"
