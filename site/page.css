@@ -426,3 +426,80 @@ a.code-path:hover { color: var(--text); }
 @media (max-width: 639px) { .foot-credits { grid-column: 1 / -1; } .foot-credits ol { columns: 1; } }
 .ring--alt { display: none; }
 @media (max-width: 639px) { .strips .ring--span { display: none; } .strips .ring--alt { display: block; } }
+
+/* ===================== v2 (design-L02): energy from the product itself ===================== */
+
+/* sharper rhythm: bigger section heads, tighter beats */
+:root { --t-h2: 56px; }
+@media (max-width: 1023px) { :root { --t-h2: 40px; } }
+@media (max-width: 639px) { :root { --t-h2: 32px; } }
+.beat { padding-top: var(--s9); }
+.h2 { letter-spacing: -0.022em; line-height: 1.0; }
+
+/* slim nav with the install one click away */
+:root { --bar-h: 48px; }
+.brand svg { height: 21px; }
+.bar nav { align-items: center; }
+.bar-copy { height: 30px; font-size: 15px; padding: 0 var(--s3); }
+@media (max-width: 639px) { .bar nav a[href*="github"] { display: none; } }
+
+/* the big-lilac field: one section on the brand colour, ink type, the sheet sits on it like a print */
+.field {
+  --on-field: var(--graphite-975);
+  --on-field-muted: var(--graphite-850);
+  background: var(--lilac-200);
+  color: var(--on-field);
+  margin-top: var(--s9);
+  padding: var(--s9) 0 var(--s9);
+}
+.field .h2 { color: var(--on-field); }
+.field .body, .field .label, .field .hint { color: var(--on-field-muted); }
+.field .label code, .field p code { color: var(--on-field); }
+.field .total-tag { color: var(--graphite-800); }
+.field .sheet { background: var(--graphite-975); border-color: var(--graphite-975); }
+.field .sheet .code { color: var(--graphite-330); }
+.field .sheet .is-kept .code { color: var(--lilac-200); }
+.field .call-code { background: var(--graphite-975); border-color: var(--graphite-975); color: var(--graphite-100); }
+.field .keep-str { color: var(--lilac-200); }
+.field .call-out { color: var(--on-field-muted); }
+.field .t-line { color: var(--on-field); }
+.field .t-dir { color: var(--graphite-700); }
+.field :focus-visible { outline-color: var(--graphite-975); }
+.field .sheet .frame-btn:focus-visible { outline-color: var(--lilac-200); }
+.field .sheet .ring { color: var(--lilac-200); }
+.link-btn { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 0.2em; cursor: pointer; }
+.field .link-btn { color: var(--on-field); }
+
+/* draw your keep: an SVG layer over the sheet; pencil cursor while JS can draw */
+.sheet-box { position: relative; }
+.draw-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 4; color: var(--lilac-200); }
+.draw-layer path { fill: none; stroke: currentColor; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+.draw-layer path.live { stroke-width: 3.5; opacity: 0.9; }
+.js .sheet.can-draw { touch-action: none; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M3 25l2.2-6.6L19.6 4a2.6 2.6 0 0 1 3.7 0l.7.7a2.6 2.6 0 0 1 0 3.7L9.6 22.8z' fill='%23cac2fb' stroke='%23090b0e' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cpath d='M3 25l2.2-6.6 4.4 4.4z' fill='%23090b0e'/%3E%3C/svg%3E") 3 25, crosshair; }
+.js .sheet.can-draw .frame-btn { cursor: inherit; }
+
+/* frames land with a short, crisp settle (no springs) */
+@keyframes land { from { transform: scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+.motion .sheet-hero .frame.on .pic { animation: land 140ms cubic-bezier(.2, .7, .2, 1) both; }
+.count { font-variant-numeric: tabular-nums; }
+
+/* tab-runners above each lane: small, never mascot size */
+.runner { position: relative; display: block; width: 32px; height: 32px; margin-bottom: var(--s2); color: var(--text); }
+.runner .pose { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+.runner .rl { stroke: var(--text-muted); fill: none; }
+.runner .rb { fill: var(--graphite-100); }
+.runner .rp { fill: var(--graphite-400); }
+.runner .pose--done { display: block; }
+.lanes.running .lane:not(.ended) .runner .pose--done { display: none; }
+.lanes.running .lane:not(.ended) .runner[data-f="a"] .pose--run-a,
+.lanes.running .lane:not(.ended) .runner[data-f="b"] .pose--run-b { display: block; }
+
+
+/* full-colour client marks: owners' own colours, a little larger */
+.client-mark { width: 24px; height: 24px; }
+.client-mark img, .client-mark svg { width: 100%; height: 100%; object-fit: contain; }
+/* full-colour marks sit on a small ink tile in both themes: several owner marks are white-on-dark only */
+.client-mark { width: 28px; height: 28px; padding: 4px; background: var(--graphite-975); border-radius: 3px; }
+.source .client-mark { background: var(--graphite-975); }
+@media (pointer: coarse) { .js .sheet.can-draw { touch-action: pan-y; } }
+.client-mark .mark-img { border-radius: 4px; } .client-mark:has(.mark-img) { padding: 0; }

@@ -94,18 +94,79 @@
     frames.forEach((f) => {
       const btn = $('.frame-btn', f);
       if (!btn) return;
-      const toggle = () => {
+      const toggle = (opts = {}) => {
         if (['9', '10', '11', '12'].includes(f.dataset.label)) splitSpan();
         const on = !f.classList.contains('is-kept');
         f.classList.toggle('is-kept', on);
         btn.setAttribute('aria-pressed', String(on));
         btn.setAttribute('aria-label', `${btn.dataset.name}, ${on ? 'kept' : 'not kept'}`);
         let r = $('.ring', f);
-        if (on && !r && tmpl) { r = tmpl.cloneNode(true); f.insertBefore(r, btn); }
+        if (on && !r && tmpl && !opts.byStroke) { r = tmpl.cloneNode(true); f.insertBefore(r, btn); }
         if (r) { if (on) { r.style.display = ''; drawRing(r); } else r.style.display = 'none'; }
         update();
       };
-      btn.addEventListener('click', toggle);
+      btn.addEventListener('click', (e) => { if (sheet.dataset.justDrew) { e.preventDefault(); return; } toggle(); });
+      f._keep = () => { if (!f.classList.contains('is-kept')) toggle({ byStroke: true }); };
+    });
+
+    // ---- draw your keep: drag a loose loop over the sheet; frames whose centre falls inside are kept.
+    // The stroke stays as the ring. Click-to-toggle and the buttons stay as the keyboard path.
+    const layer = $('.draw-layer', sheet.parentNode);
+    const NS = 'http://www.w3.org/2000/svg';
+    if (layer && window.PointerEvent) {
+      sheet.classList.add('can-draw');
+      let pts = null, path = null, id = null;
+      const at = (e) => { const b = sheet.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+      const d = (p) => {
+        if (p.length < 2) return '';
+        let out = `M${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
+        for (let i = 1; i < p.length - 1; i++) { const m = [(p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2]; out += ` Q${p[i][0].toFixed(1)} ${p[i][1].toFixed(1)} ${m[0].toFixed(1)} ${m[1].toFixed(1)}`; }
+        const l = p[p.length - 1]; return out + ` L${l[0].toFixed(1)} ${l[1].toFixed(1)}`;
+      };
+      const inside = (x, y, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+      const drop = () => { if (path) path.parentNode.removeChild(path); path = null; pts = null; };
+      sheet.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        pts = [at(e)]; id = e.pointerId;
+        path = document.createElementNS(NS, 'path'); path.setAttribute('class', 'live'); layer.append(path);
+      });
+      sheet.addEventListener('pointermove', (e) => {
+        if (!pts || e.pointerId !== id) return;
+        const p = at(e), q = pts[pts.length - 1];
+        if (Math.hypot(p[0] - q[0], p[1] - q[1]) < 3) return;
+        pts.push(p);
+        if (pts.length === 4) { try { sheet.setPointerCapture(id); } catch (_) {} }
+        path.setAttribute('d', d(pts));
+      });
+      sheet.addEventListener('pointerup', (e) => {
+        if (!pts || e.pointerId !== id) return;
+        const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+        const big = pts.length > 6 && Math.max(...xs) - Math.min(...xs) > 24 && Math.max(...ys) - Math.min(...ys) > 24;
+        if (!big) { drop(); return; } // a click: the frame button handles it
+        path.setAttribute('class', '');
+        const b = sheet.getBoundingClientRect(); let n = 0;
+        frames.forEach((f) => {
+          if (getComputedStyle(f).display === 'none') return;
+          const r = f.getBoundingClientRect();
+          if (inside(r.left - b.left + r.width / 2, r.top - b.top + r.height / 2, pts)) { f._keep(); n++; }
+        });
+        if (!n) drop();
+        else { path = null; pts = null; const live = $('#sheet-live'); if (live) live.textContent = `Ring drawn. Row string now ${$('#keep-str').textContent}.`; }
+        sheet.dataset.justDrew = '1'; setTimeout(() => { delete sheet.dataset.justDrew; }, 0);
+      });
+      sheet.addEventListener('pointercancel', drop);
+    }
+    const clear = $('#sheet-clear');
+    if (clear) clear.addEventListener('click', () => {
+      if (layer) layer.textContent = '';
+      $$('.ring--span', sheet).forEach((r) => r.parentNode.removeChild(r));
+      frames.forEach((f) => {
+        if (!f.classList.contains('is-kept')) return;
+        f.classList.toggle('is-kept', false);
+        const btn = $('.frame-btn', f); btn.setAttribute('aria-pressed', 'false'); btn.setAttribute('aria-label', `${btn.dataset.name}, not kept`);
+        const r = $('.ring', f); if (r) r.style.display = 'none';
+      });
+      update();
     });
     function update() {
       // a post with every item kept is written as its number; consecutive whole posts become a range
@@ -141,6 +202,8 @@
       if (started || !es.some((e) => e.isIntersecting)) return;
       started = true; io.disconnect();
       lanesEl.classList.add('running');
+      const runners = $$('.runner', lanesEl); let fr = 'a';
+      const legs = runners.length ? setInterval(() => { fr = fr === 'a' ? 'b' : 'a'; runners.forEach((r) => { r.dataset.f = fr; }); }, 140) : 0;
       let done = 0;
       lanes.forEach((lane, i) => {
         const ol = $('.lane-rows', lane); ol.textContent = '';
@@ -150,7 +213,7 @@
           const li = document.createElement('li'); li.textContent = rows[n++]; ol.append(li);
           while (ol.children.length > 15) ol.firstChild.remove();
           if (n < rows.length) setTimeout(tick, step);
-          else { lane.classList.add('ended'); if (++done === lanes.length) lanesEl.classList.remove('running'); }
+          else { lane.classList.add('ended'); if (++done === lanes.length) { lanesEl.classList.remove('running'); clearInterval(legs); } }
         };
         tick();
       });
@@ -166,6 +229,8 @@
       if (finished) return; finished = true;
       hero.classList.remove('run', 'fill'); hero.classList.add('done');
       $$('.ring', hero).forEach((r) => { r.classList.remove('draw'); r.style.visibility = ''; });
+      $$('.count', hero).forEach((c) => { c.textContent = c.dataset.to; });
+      $$('.keep-note, .total', hero).forEach((e) => { e.style.visibility = ''; });
       ['wheel', 'keydown', 'pointerdown', 'touchstart'].forEach((e) => removeEventListener(e, finish));
     };
     ['wheel', 'keydown', 'pointerdown', 'touchstart'].forEach((e) => addEventListener(e, finish, { passive: true, once: true }));
@@ -188,10 +253,16 @@
       hero.classList.add('fill'); hero.classList.remove('run');
       $$('.ring, .keep-note, .total', hero).forEach((e) => (e.style.visibility = 'hidden'));
       const frames = $$('.frame', hero);
-      for (let i = 0; i < frames.length && !finished; i += 2) { frames[i].classList.add('on'); if (frames[i + 1]) frames[i + 1].classList.add('on'); await wait(16); }
+      const counts = $$('.total .count', hero);
+      $('.total', hero).style.visibility = 'visible';
+      for (let i = 0; i < frames.length && !finished; i += 2) {
+        frames[i].classList.add('on'); if (frames[i + 1]) frames[i + 1].classList.add('on');
+        const k = Math.min(1, (i + 2) / frames.length);
+        counts.forEach((c) => { c.textContent = Math.round(+c.dataset.to * k); });
+        await wait(16);
+      }
       if (finished) return;
       hero.classList.remove('fill');
-      $('.total', hero).style.visibility = 'visible';
       await wait(250);
       for (const r of $$('.ring', hero).filter((x) => getComputedStyle(x).display !== 'none')) { if (finished) return; await drawRing(r); }
       $('.keep-note', hero).style.visibility = 'visible';
