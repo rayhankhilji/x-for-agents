@@ -23,7 +23,7 @@ export interface DownloadResult {
 const hasProxy = !!(process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY);
 const dispatcher: Dispatcher | undefined = hasProxy ? new EnvHttpProxyAgent() : undefined;
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
-const log = (...a: unknown[]) => console.error("[x-for-agents]", ...a);
+const log = (...a: unknown[]) => console.error("[riffler]", ...a);
 
 function extFor(m: Media): string {
   if (m.type !== "photo") return "mp4";
@@ -80,7 +80,7 @@ function staticFfmpeg(): string | null {
   }
 }
 
-/** Find ffmpeg; if missing, try to install a static build into ~/.x-for-agents/tools. Returns null if impossible. */
+/** Find ffmpeg; if missing, try to install a static build into ~/.riffler/tools. Returns null if impossible. */
 export function resolveFfmpeg(opts: { install?: boolean } = { install: true }): Promise<string | null> {
   if (ffmpegPath !== undefined && (ffmpegPath || !opts.install || installTried)) return Promise.resolve(ffmpegPath);
   if (ffmpegSetup) return ffmpegSetup;
@@ -91,7 +91,7 @@ export function resolveFfmpeg(opts: { install?: boolean } = { install: true }): 
     log("ffmpeg needed for an HLS-only video; installing a static build (one-time)…");
     fs.mkdirSync(config.toolsDir, { recursive: true });
     if (!fs.existsSync(path.join(config.toolsDir, "package.json")))
-      fs.writeFileSync(path.join(config.toolsDir, "package.json"), '{"name":"x-for-agents-tools","private":true}');
+      fs.writeFileSync(path.join(config.toolsDir, "package.json"), '{"name":"riffler-tools","private":true}');
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
     const ok = await new Promise<boolean>((resolve) => {
       const p = spawn(npm, ["install", "--no-audit", "--no-fund", "--prefix", config.toolsDir, "ffmpeg-static@5"], {

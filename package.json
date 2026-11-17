@@ -1,9 +1,10 @@
 {
-  "name": "x-for-agents",
-  "version": "0.2.0",
-  "description": "MCP server: let Claude browse X with your account in up to 10 parallel tabs and pull images, videos and posts fast, with token-lean output, contact sheets and a native gallery UI.",
+  "name": "riffler",
+  "version": "0.3.0",
+  "description": "Let Claude scroll X with your own account in ten tabs and keep the originals: full-size images, best-quality video and posts, straight into your repo. Free MCP server.",
   "type": "module",
   "bin": {
+    "riffler": "dist/index.js",
     "x-for-agents": "dist/index.js"
   },
   "main": "dist/index.js",
@@ -37,14 +38,21 @@
     "typescript": "^5.9.3"
   },
   "keywords": [
+    "riffler",
     "mcp",
+    "mcp-server",
     "claude",
     "claude-code",
+    "codex",
     "x",
     "twitter",
-    "scraper",
     "media-downloader",
     "playwright",
     "mcp-apps"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rayhankhilji/x-for-agents.git"
+  },
+  "homepage": "https://github.com/rayhankhilji/x-for-agents#readme"
 }

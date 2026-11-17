@@ -14,7 +14,7 @@ import { GALLERY_URI, UI_CSP, UI_MIME, galleryData, galleryHtml } from "./ui.js"
 
 export const pool = new BrowserPool();
 const store = new PostStore();
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 // ---------------------------------------------------------------- schemas (kept terse: every word here costs tokens on every turn)
 
@@ -168,12 +168,12 @@ export function selectFromRun(posts: Post[], spec?: string): Post[] {
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "x-for-agents", version: VERSION });
+  const server = new McpServer({ name: "riffler", version: VERSION });
   const wantsUi = () =>
     process.env.X_UI === "always" || (process.env.X_UI !== "never" && !!getUiCapability(server.server.getClientCapabilities() as any));
   const ui = { ui: { resourceUri: GALLERY_URI } };
 
-  registerAppResource(server, "X media gallery", GALLERY_URI, { description: "Gallery for x-for-agents results" }, async () => ({
+  registerAppResource(server, "X media gallery", GALLERY_URI, { description: "Gallery for Riffler results" }, async () => ({
     contents: [{ uri: GALLERY_URI, mimeType: UI_MIME, text: galleryHtml(), _meta: { ui: { csp: UI_CSP } } }],
   }));
 
@@ -391,7 +391,7 @@ export function buildServer(): McpServer {
           `output ${displayPath(resolveOutDir())} · index ${kfmt(store.size())} posts`,
           `ffmpeg ${ff ? "ok" : "not installed (auto-installs if an HLS-only video needs it)"}`,
           rl ? `rate limits: ${rl}` : "",
-          who.loggedIn ? "" : "fix: local → `npx x-for-agents login`; cloud/web → set X_AUTH_TOKEN + X_CT0 env vars",
+          who.loggedIn ? "" : "fix: local → `npx riffler login`; cloud/web → set X_AUTH_TOKEN + X_CT0 env vars",
         ];
         return { content: [{ type: "text" as const, text: lines.filter(Boolean).join("\n") }] };
       } catch (e) {
@@ -437,5 +437,5 @@ export async function serveStdio() {
   process.stdin.on("end", () => void shutdown());
   process.stdin.on("close", () => void shutdown());
   await server.connect(transport);
-  console.error(`[x-for-agents] MCP ready · tabs=${config.tabs} · output=${displayPath(resolveOutDir())}`);
+  console.error(`[riffler] MCP ready · tabs=${config.tabs} · output=${displayPath(resolveOutDir())}`);
 }

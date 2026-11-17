@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -6,7 +7,10 @@ export function expandHome(p: string): string {
 }
 
 const num = (v: string | undefined, d: number) => (v != null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d);
-const home = expandHome(process.env.X_HOME ?? "~/.x-for-agents");
+// ~/.riffler by default; an existing ~/.x-for-agents (the pre-rename location) keeps working.
+const legacyHome = expandHome("~/.x-for-agents");
+const home = expandHome(process.env.X_HOME ?? (fs.existsSync(legacyHome) && !fs.existsSync(expandHome("~/.riffler")) ? legacyHome : "~/.riffler"));
+const legacyData = expandHome("~/x-for-agents-data");
 
 export const config = {
   home,
@@ -15,7 +19,7 @@ export const config = {
   /** Lazily-installed helper tools (ffmpeg, browser). */
   toolsDir: path.join(home, "tools"),
   /** Indexes and run JSON. */
-  dataDir: expandHome(process.env.X_DATA_DIR ?? "~/x-for-agents-data"),
+  dataDir: expandHome(process.env.X_DATA_DIR ?? (fs.existsSync(legacyData) ? legacyData : "~/riffler-data")),
   /** Where media goes. Relative paths resolve against the project Claude Code is working in. */
   outputDir: process.env.X_OUTPUT_DIR || undefined,
   /** The project directory Claude Code launched us from. */

@@ -51,7 +51,7 @@ async function readJson(req: http.IncomingMessage): Promise<unknown> {
 export async function serveHttp(port: number, host: string) {
   const token = process.env.X_MCP_TOKEN || undefined;
   if (!token && host !== "127.0.0.1" && host !== "localhost") {
-    console.error("[x-for-agents] No X_MCP_TOKEN set: only requests from this machine are accepted. Set a token to allow remote clients.");
+    console.error("[riffler] No X_MCP_TOKEN set: only requests from this machine are accepted. Set a token to allow remote clients.");
   }
   const srv = http.createServer(async (req, res) => {
     try {
@@ -88,7 +88,7 @@ export async function serveHttp(port: number, host: string) {
   });
   srv.on("clientError", (_e, socket) => socket.destroy());
   await new Promise<void>((r) => srv.listen(port, host, r));
-  console.error(`[x-for-agents] HTTP MCP on http://${host}:${port}/mcp${token ? "/<token>" : ""}`);
+  console.error(`[riffler] HTTP MCP on http://${host}:${port}/mcp${token ? "/<token>" : ""}`);
   let stopping: Promise<void> | null = null;
   const shutdown = () =>
     (stopping ??= (async () => {

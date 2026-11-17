@@ -55,8 +55,8 @@ export interface CollectResult {
 export class NotLoggedInError extends Error {
   constructor() {
     super(
-      "Not logged in to X. Locally: run `npx x-for-agents login`. Cloud/web Claude Code: set X_AUTH_TOKEN and X_CT0 " +
-        "(cookies from your browser) in the environment, or `npx x-for-agents import-cookies <file>`.",
+      "Not logged in to X. Locally: run `npx riffler login`. Cloud/web Claude Code: set X_AUTH_TOKEN and X_CT0 " +
+        "(cookies from your browser) in the environment, or `npx riffler import-cookies <file>`.",
     );
   }
 }

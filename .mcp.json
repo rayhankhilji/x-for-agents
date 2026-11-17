@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "x": {
+    "riffler": {
       "command": "node",
       "args": ["scripts/launch.mjs"],
       "env": { "X_OUTPUT_DIR": "x-media" }

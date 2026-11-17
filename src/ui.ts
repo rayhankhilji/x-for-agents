@@ -7,7 +7,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import type { Post } from "./parse.js";
 
-export const GALLERY_URI = "ui://x-for-agents/gallery.html";
+export const GALLERY_URI = "ui://riffler/gallery.html";
 export const UI_MIME = "text/html;profile=mcp-app";
 export const UI_CSP = {
   resourceDomains: ["https://pbs.twimg.com", "https://video.twimg.com", "https://abs.twimg.com"],
@@ -105,7 +105,7 @@ button:disabled{opacity:.4;cursor:default}
 <script>${appBundle()}</script>
 <script>
 const { App } = globalThis.McpApps;
-const app = new App({ name: "x-for-agents-gallery", version: "0.2.0" }, {}, { autoResize: true });
+const app = new App({ name: "riffler-gallery", version: "0.3.0" }, {}, { autoResize: true });
 let data = null, filter = "all"; const selected = new Set();
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => n == null ? "" : n >= 1e6 ? (n/1e6).toFixed(1).replace(/\\.0$/,"")+"M" : n >= 1e3 ? (n/1e3).toFixed(1).replace(/\\.0$/,"")+"k" : ""+n;

@@ -124,8 +124,8 @@ test("tools are registered with the gallery UI", async () => {
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), ["x_batch", "x_collect", "x_download", "x_preview", "x_status"]);
   const collect = tools.find((t) => t.name === "x_collect")!;
-  assert.equal((collect._meta as any).ui.resourceUri, "ui://x-for-agents/gallery.html");
-  const res = await client.readResource({ uri: "ui://x-for-agents/gallery.html" });
+  assert.equal((collect._meta as any).ui.resourceUri, "ui://riffler/gallery.html");
+  const res = await client.readResource({ uri: "ui://riffler/gallery.html" });
   assert.match((res.contents[0] as any).text, /globalThis\.McpApps=\{/);
   assert.equal((res.contents[0] as any).mimeType, "text/html;profile=mcp-app");
 });

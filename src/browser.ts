@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { config } from "./config.js";
 
-const log = (...a: unknown[]) => console.error("[x-for-agents]", ...a);
+const log = (...a: unknown[]) => console.error("[riffler]", ...a);
 
 export interface CookieInput {
   name: string;

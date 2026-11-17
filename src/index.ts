@@ -7,15 +7,14 @@ import { downloadLine } from "./format.js";
 import { downloadPosts, resolveFfmpeg } from "./download.js";
 import { PostStore } from "./store.js";
 
-const HELP = `x-for-agents — let Claude browse X with your account and pull images/videos fast.
+const HELP = `riffler: let Claude scroll X with your account in ten tabs and keep the originals.
 
-  x-for-agents                        MCP server on stdio (what Claude Code runs)
-  x-for-agents serve --http [--port 8787] [--host 127.0.0.1]
-                                      MCP over HTTP (claude.ai / Desktop custom connector). Set X_MCP_TOKEN.
-  x-for-agents login                  Open a browser window, sign in to X once
-  x-for-agents import-cookies <file|"auth_token=..; ct0=..">
-  x-for-agents status | doctor | logout | setup-ffmpeg
-  x-for-agents collect <source> [target] [--max N] [--types photo,video] [--out DIR] [--no-download]
+  riffler                              MCP server on stdio (what Claude Code, Codex, Cursor run)
+  riffler serve --http [--port 8787]   MCP over HTTP for claude.ai / Desktop connectors (set X_MCP_TOKEN)
+  riffler login                        Open a browser window and sign in to X once
+  riffler import-cookies <file|"auth_token=..; ct0=..">
+  riffler status | doctor | logout | setup-ffmpeg
+  riffler collect <source> [target] [--max N] [--types photo,video] [--out DIR] [--no-download]
 
 Sources: ${SOURCES.join(", ")}
 Env: X_TABS (10) X_OUTPUT_DIR X_DATA_DIR X_HOME X_HEADLESS X_BROWSER_PATH X_AUTH_TOKEN X_CT0 X_COOKIES_FILE
@@ -86,7 +85,7 @@ async function doctor() {
 }
 
 async function importCookiesCmd(arg?: string) {
-  if (!arg) throw new Error("usage: x-for-agents import-cookies <file | 'auth_token=...; ct0=...'>");
+  if (!arg) throw new Error("usage: riffler import-cookies <file | 'auth_token=...; ct0=...'>");
   const raw = fs.existsSync(arg) ? fs.readFileSync(arg, "utf8") : arg;
   const cookies = parseCookies(raw);
   if (!cookies.some((c) => c.name === "auth_token")) throw new Error("No auth_token cookie found in input.");
@@ -144,7 +143,7 @@ async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   if (cmd === undefined || cmd === "serve") {
     // A long-running server must never die from one stray rejected promise.
-    process.on("unhandledRejection", (e) => console.error("[x-for-agents] unhandled:", (e as Error)?.message ?? e));
+    process.on("unhandledRejection", (e) => console.error("[riffler] unhandled:", (e as Error)?.message ?? e));
   }
   const flag = (name: string, d: string) => {
     const i = rest.indexOf(name);

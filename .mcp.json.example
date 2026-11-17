@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "x": {
+    "riffler": {
       "command": "npx",
-      "args": ["-y", "x-for-agents@latest"],
+      "args": ["-y", "riffler@latest"],
       "env": {
         "X_OUTPUT_DIR": "x-media",
         "X_TABS": "10"
