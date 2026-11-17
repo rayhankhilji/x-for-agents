@@ -143,6 +143,28 @@ function parseRows(spec: string | undefined, max: number): number[] {
   return [...out].sort((x, y) => x - y);
 }
 
+/**
+ * Selection for downloads: "2a,5,9-12" → posts from the run, trimmed to the lettered media
+ * where a letter is given (letters match the labels on contact sheets and in the gallery).
+ */
+export function selectFromRun(posts: Post[], spec?: string): Post[] {
+  const rowsWanted = parseRows(spec, posts.length);
+  const letters = new Map<number, Set<number>>();
+  let wholeRows = new Set<number>();
+  for (const part of (spec ?? "").split(/[\s,]+/).filter(Boolean)) {
+    const m = part.match(/^(\d+)([a-h])$/);
+    if (m) letters.set(Number(m[1]), (letters.get(Number(m[1])) ?? new Set()).add(m[2].charCodeAt(0) - 97));
+    else for (const n of parseRows(part, posts.length)) wholeRows.add(n);
+  }
+  if (!spec) wholeRows = new Set(rowsWanted);
+  return rowsWanted.map((n) => {
+    const p = posts[n - 1];
+    const pick = letters.get(n);
+    if (!pick || wholeRows.has(n)) return p;
+    return { ...p, media: p.media.filter((_, j) => pick.has(j)) };
+  });
+}
+
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
 export function buildServer(): McpServer {
@@ -285,7 +307,7 @@ export function buildServer(): McpServer {
       description: "Download media for rows of a run (e.g. after reviewing x_preview) or for post ids/URLs. Use output_dir to put files in the repo.",
       inputSchema: {
         run: z.string().optional(),
-        rows: z.string().optional().describe('e.g. "2,5,9-12"'),
+        rows: z.string().optional().describe('e.g. "2,5b,9-12" (letter = one media of that post)'),
         posts: z.array(z.string()).max(500).optional().describe("post ids/URLs"),
         media_types: z.array(mediaType).optional(),
         output_dir: z.string().optional(),
@@ -297,7 +319,7 @@ export function buildServer(): McpServer {
         if (a.run) {
           const run = store.getRun(a.run);
           if (!run) throw new Error(`unknown run ${a.run}`);
-          for (const n of parseRows(a.rows, run.posts.length)) posts.push(run.posts[n - 1]);
+          posts.push(...selectFromRun(run.posts, a.rows));
         }
         const missing: string[] = [];
         for (const ref of a.posts ?? []) {

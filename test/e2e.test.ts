@@ -149,6 +149,20 @@ test("x_batch: 10 feeds in parallel tabs, streaming downloads into the project",
   assert.ok(out.length < 1500, "batch summary stays small");
 });
 
+test("more concurrent calls than tabs: extra calls queue for a free tab and all finish", async () => {
+  const t0 = Date.now();
+  const results = await Promise.all(
+    Array.from({ length: 15 }, (_, i) =>
+      client.callTool({ name: "x_collect", arguments: { source: "user_media", target: `q${i}`, max_posts: 30, download: false, detail: "summary" } }),
+    ),
+  );
+  for (const r of results) assert.match(text(r), /30 posts .* stop=max_posts/);
+  assert.equal(pool.stats.open, 10, "never more than X_TABS tabs");
+  assert.equal(pool.stats.busy, 0);
+  assert.equal(pool.stats.queued, 0);
+  console.log(`15 calls on 10 tabs: ${Date.now() - t0}ms`);
+});
+
 test("x_collect: filters, compact rows, preview image", async () => {
   const r: any = await client.callTool({ name: "x_collect", arguments: { source: "home", match: "cat", max_posts: 15, preview: true } });
   const out = text(r);
@@ -177,4 +191,7 @@ test("x_preview + x_download by run rows", async () => {
   const dl = text(await client.callTool({ name: "x_download", arguments: { run, rows: "1,5", output_dir: "picked" } }));
   assert.match(dl, /files: 3 new/); // row 1 has photo+video, row 5 photo
   assert.ok(fs.existsSync(path.join(process.env.CLAUDE_PROJECT_DIR!, "picked")));
+  const one = text(await client.callTool({ name: "x_download", arguments: { run, rows: "1b", output_dir: "one" } }));
+  assert.match(one, /files: 1 new/);
+  assert.match(one, /_2\.mp4/, "letter b = the post's second media (the video)");
 });

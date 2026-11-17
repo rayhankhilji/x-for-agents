@@ -332,6 +332,8 @@ export class BrowserPool {
   }
 
   release(page: Page) {
+    // `busy` counts every caller from acquire() until release(), including queued waiters.
+    this.busy--;
     const w = this.waiters.shift();
     if (w) {
       if (!page.isClosed()) return w.resolve(page);
@@ -344,7 +346,6 @@ export class BrowserPool {
       });
       return;
     }
-    this.busy--;
     if (!page.isClosed()) this.free.push(page);
     if (this.busy === 0) {
       this.idleTimer = setTimeout(() => void this.close(), config.idleCloseMs);

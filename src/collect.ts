@@ -270,7 +270,15 @@ export async function collect(page: Page, o: CollectOptions): Promise<CollectRes
 
   page.on("response", onResponse);
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+        break;
+      } catch (e) {
+        if (attempt >= 3) throw new Error(`couldn't load ${url}: ${(e as Error).message.split("\n")[0]}`);
+        await sleep(1000 * attempt);
+      }
+    }
     if (LOGIN_URL_RE.test(page.url())) throw new NotLoggedInError();
 
     if (o.source === "following") {

@@ -5,6 +5,7 @@ import { collect, SOURCES, type Source } from "./collect.js";
 import { config, displayPath, resolveOutDir } from "./config.js";
 import { downloadLine } from "./format.js";
 import { downloadPosts, resolveFfmpeg } from "./download.js";
+import { PostStore } from "./store.js";
 
 const HELP = `x-for-agents — let Claude browse X with your account and pull images/videos fast.
 
@@ -124,11 +125,18 @@ async function collectCmd(args: string[]) {
       since: flags.get("--since") as string | undefined,
       match: flags.get("--match") as string | undefined,
     });
-    console.log(`${r.posts.length} posts · ${r.stopReason} · ${r.scrolls} scrolls · ${(r.elapsedMs / 1000).toFixed(1)}s`);
+    const store = new PostStore();
+    const id = store.newRunId();
+    store.add(r.posts);
+    console.log(`run ${id} · ${r.posts.length} posts · ${r.stopReason} · ${r.scrolls} scrolls · ${(r.elapsedMs / 1000).toFixed(1)}s`);
+    let files: { post: string; key: string; path?: string }[] | undefined;
     if (!flags.has("--no-download")) {
       const dir = resolveOutDir(flags.get("--out") as string | undefined);
-      console.log(downloadLine(await downloadPosts(r.posts, { types, dir }), dir));
+      const d = await downloadPosts(r.posts, { types, dir });
+      files = d.filter((x) => x.path).map((x) => ({ post: x.post_id, key: x.media_key, path: x.path }));
+      console.log(downloadLine(d, dir));
     }
+    store.saveRun({ id, label: [source, pos[1]].filter(Boolean).join(" "), created_at: new Date().toISOString(), url: r.url, stop: r.stopReason, posts: r.posts, files });
   });
 }
 
