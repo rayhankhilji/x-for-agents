@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+<title>Keep, drawing path</title>
+<!-- Drawing order: starts at the thin landing, travels counter-clockwise, ends at the overshoot tail.
+     Shown at 1 unit. To reveal the filled ring set stroke-width above 10 and animate stroke-dashoffset in a mask. -->
+<path stroke="currentColor" stroke-width="1" stroke-linecap="round" d="M46.5 23.1C34.9 24.8 23.5 28.9 15 37.2C-1.1 53.2 -0 78 15.8 93.7C31.4 109.3 55.1 111.5 75.4 105.5C96.2 99.4 120.5 82.1 115.1 57.3C114.4 53.9 113.1 50.6 111.3 47.6C109 43.8 106 40.4 102.6 37.6C88.4 25.9 68.7 24.6 51.2 27C43.9 28 36.7 29.7 30 32.8"/>
+</svg>

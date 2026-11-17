@@ -1,6 +1,6 @@
 # Riffler
 
-**Let the feed run. Keep the originals.**
+**Let the feed run. Keep the originals.**  ·  [riffler site](https://rayhankhilji.github.io/x-for-agents/)
 
 Riffler is a free MCP server. It lets Claude scroll X with your own account, ten tabs at once, and
 puts the full-size images, best-quality videos and post data straight into your project.
