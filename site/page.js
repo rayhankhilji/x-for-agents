@@ -307,6 +307,19 @@
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(start, 450));
 })();
 
+// Launch film: the poster and a link to the MP4 are the base page (no JS, reduced motion).
+// With motion allowed, the video element takes the poster's place and the link plays it in place.
+(() => {
+  if (!document.documentElement.classList.contains('motion')) return;
+  const frame = document.querySelector('[data-film]'); if (!frame) return;
+  const video = frame.querySelector('video'); const play = document.querySelector('.film-play');
+  video.hidden = false;
+  if (play) play.addEventListener('click', (e) => {
+    e.preventDefault(); video.scrollIntoView({ block: 'center', behavior: 'auto' });
+    const p = video.play(); if (p && p.catch) p.catch(() => {});
+  });
+})();
+
 // Open the credits list when a link points at it.
 (() => {
   const open = () => { if (location.hash === '#credits') { const el = document.getElementById('credits'); if (el) el.open = true; } };
