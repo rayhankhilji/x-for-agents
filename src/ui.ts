@@ -70,37 +70,61 @@ function appBundle(): string {
   return bundle;
 }
 
+const ic = (n: string) => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+
 export function galleryHtml(): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>X media</title>
 <style>
-:root{--bg:#fff;--fg:#0f1419;--muted:#536471;--line:#eff3f4;--card:#f7f9f9;--accent:#1d9bf0;--sel:#1d9bf033}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#000;--fg:#e7e9ea;--muted:#71767b;--line:#2f3336;--card:#16181c;--sel:#1d9bf044}}
-:root[data-theme=dark]{--bg:#000;--fg:#e7e9ea;--muted:#71767b;--line:#2f3336;--card:#16181c;--sel:#1d9bf044}
-*{box-sizing:border-box}body{margin:0;font-variant-ligatures:none;font-feature-settings:"calt" 0;background:var(--bg);color:var(--fg);font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif}
-header{position:sticky;top:0;z-index:2;background:var(--bg);display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
-header b{font-size:14px}.muted{color:var(--muted)}
-.tabs{display:flex;gap:4px;margin-left:auto}
-button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:4px 10px;cursor:pointer}
-button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root{--bg:#fff;--fg:#0A0A14;--muted:#525369;--line:#DCDDE6;--card:#F6F6FC;--accent:#2B1DFF;--accent-hover:#2108D0;--on-accent:#fff;--acid:#D8FF3C;--ring:#0A0A14;--focus:#2B1DFF;--chip-on-bg:#0A0A14;--chip-on-fg:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B0A1F;--fg:#fff;--muted:#C5C6D2;--line:#3A3B52;--card:#1F1F36;--accent:#BEB8FF;--accent-hover:#fff;--on-accent:#0A0A14;--ring:transparent;--focus:#D8FF3C;--chip-on-bg:#BEB8FF;--chip-on-fg:#0A0A14}}
+:root[data-theme=dark]{--bg:#0B0A1F;--fg:#fff;--muted:#C5C6D2;--line:#3A3B52;--card:#1F1F36;--accent:#BEB8FF;--accent-hover:#fff;--on-accent:#0A0A14;--ring:transparent;--focus:#D8FF3C;--chip-on-bg:#BEB8FF;--chip-on-fg:#0A0A14}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+header{position:sticky;top:0;z-index:2;background:var(--bg);display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+.mark{width:16px;height:16px;flex:none;fill:currentColor;color:var(--fg)}
+header b{font-size:14px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.muted{color:var(--muted)}#sub{font-variant-numeric:tabular-nums}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto;align-items:center}
+button{font:inherit;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 8px;cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--chip-on-bg);color:var(--chip-on-fg);border-color:var(--chip-on-bg)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700;margin-left:4px}
+button.primary:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
 button:disabled{opacity:.4;cursor:default}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;padding:12px}
-.cell{position:relative;background:var(--card);border-radius:10px;overflow:hidden;border:2px solid transparent;cursor:pointer}
-.cell.sel{border-color:var(--accent);background:var(--sel)}
-.cell img,.cell video{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:#0001}
-.badge{position:absolute;top:6px;left:6px;background:#000b;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600}
-.dur{position:absolute;top:6px;right:6px;background:#000b;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px}
+.cell{position:relative;background:var(--card);border-radius:8px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}
+.cell.sel{border-color:transparent;outline:3px solid var(--acid);outline-offset:-3px;box-shadow:0 0 0 1px var(--ring)}
+.cell.sel .meta{background:var(--card)}
+.cell img,.cell video{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:var(--line)}
+.badge,.dur{position:absolute;top:6px;background:#0A0A14e6;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1,"lnum" 1}
+.badge{left:6px}.cell.sel .badge{background:var(--acid);color:#0A0A14}
+.dur{right:6px;display:flex;align-items:center;gap:4px}.dur svg.i{width:12px;height:12px}
 .meta{padding:6px 8px;display:flex;gap:6px;align-items:center;min-width:0}
-.meta a{color:var(--fg);font-weight:600;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta a{color:var(--fg);font-weight:700;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta a:hover{color:var(--accent);text-decoration:underline}
+.meta .l{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}.meta .l svg.i{width:13px;height:13px}
 .meta .r{margin-left:auto;display:flex;gap:4px}
-.icon{border:none;background:none;padding:2px 4px;color:var(--muted)}
-.empty{padding:40px;text-align:center;color:var(--muted)}
+.icon{border:none;background:none;padding:3px;color:var(--muted);border-radius:6px}.icon:hover{color:var(--accent)}
+.empty{padding:40px;text-align:center;color:var(--muted);grid-column:1/-1}
 </style></head>
 <body>
-<header><b id="title">X media</b><span class="muted" id="sub"></span>
-<div class="tabs"><button data-f="all" class="on">All</button><button data-f="photo">Photos</button><button data-f="video">Videos</button><button data-f="gif">GIFs</button>
-<button id="send" class="primary" disabled>Use selected</button></div></header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="m" viewBox="0 0 128 128"><path d="M90.92 69.26Q93.71 72.06 92.58 75Q91.45 77.93 87.5 78.13L71.34 78.91L84.21 108.94Q86.74 114.84 81.04 117.79L69.64 123.71Q66.93 125.11 64.43 124.27Q61.94 123.43 60.63 120.68L46.69 91.36L28.68 107.57Q25.75 110.21 22.87 108.93Q20 107.65 20 103.7V10.7Q20 6.68 22.95 5.46Q25.89 4.24 28.74 7.08ZM48 56H40V72H48ZM64 56H56V72H64Z"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8.5 8.5h.01"/><path d="M3 17l5.5-5.5L14 17l2-2 3.5 3.5"/></symbol>
+<symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5Z"/></symbol>
+<symbol id="i-collect" viewBox="0 0 24 24"><path d="M10 12H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v3"/><path d="M11 10v11l3-2.5 2 3.7 2.3-1-2-3.7H20Z"/></symbol>
+<symbol id="i-saved" viewBox="0 0 24 24"><path d="M3 12h5l1.5 2.5h5L16 12h5v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M7 12V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7"/></symbol>
+<symbol id="i-limits" viewBox="0 0 24 24"><path d="M6 18.5A9 9 0 1 1 21 12"/><path d="M17.5 12H21"/><path d="M12 12l4-4"/></symbol>
+<symbol id="i-likes" viewBox="0 0 24 24"><path d="M12 19.4 4.8 12.2A4.5 4.5 0 1 1 12 6.9a4.5 4.5 0 1 1 7.2 5.3Z"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></symbol>
+</defs></svg>
+<header><div class="brand"><svg class="mark" aria-hidden="true"><use href="#m"/></svg><b id="title">X media</b><span class="muted" id="sub"></span></div>
+<div class="tabs"><button data-f="all" class="on">${ic("collect")}All</button><button data-f="photo">${ic("image")}Photos</button><button data-f="video">${ic("video")}Videos</button><button data-f="gif">${ic("limits")}GIFs</button>
+<button id="send" class="primary" disabled>${ic("saved")}<span id="sendl">Use selected</span></button></div></header>
 <div class="grid" id="grid"><div class="empty">Waiting for results…</div></div>
 <script>${appBundle()}</script>
 <script>
@@ -110,6 +134,8 @@ let data = null, filter = "all"; const selected = new Set();
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => n == null ? "" : n >= 1e6 ? (n/1e6).toFixed(1).replace(/\\.0$/,"")+"M" : n >= 1e3 ? (n/1e3).toFixed(1).replace(/\\.0$/,"")+"k" : ""+n;
 const dur = (ms) => { if (!ms) return ""; const s = Math.round(ms/1000); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
+const ico = (n) => '<svg class="i" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
+const IV = ico("video"), IL = ico("likes"), ID = ico("dl");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function cells() {
   const out = [];
@@ -126,12 +152,12 @@ function render() {
     const vis = m.type === "photo" ? '<img loading="lazy" src="' + esc(m.thumb || m.src) + '">'
       : '<video preload="none" playsinline muted ' + (m.type === "gif" ? "loop autoplay " : "controls ") + 'poster="' + esc(m.thumb) + '" src="' + esc(m.src) + '"></video>';
     return '<div class="cell' + (selected.has(key) ? " sel" : "") + '" data-k="' + key + '">' + vis +
-      '<span class="badge">' + key + '</span>' + (m.type !== "photo" ? '<span class="dur">' + (m.type === "gif" ? "GIF" : "▶ " + dur(m.dur)) + "</span>" : "") +
-      '<div class="meta"><a href="#" data-open="' + esc(it.url) + '" title="' + esc(it.text) + '">@' + esc(it.author) + '</a><span class="muted">♥' + fmt(it.likes) + '</span>' +
-      '<span class="r"><button class="icon" title="Download" data-dl="' + esc(m.src) + '" data-name="' + esc(it.author + "_" + it.id + "_" + key) + '">⬇</button></span></div></div>';
+      '<span class="badge">' + key + '</span>' + (m.type !== "photo" ? '<span class="dur">' + (m.type === "gif" ? "GIF" : IV + dur(m.dur)) + "</span>" : "") +
+      '<div class="meta"><a href="#" data-open="' + esc(it.url) + '" title="' + esc(it.text) + '">@' + esc(it.author) + '</a>' + (it.likes != null ? '<span class="muted l">' + IL + fmt(it.likes) + '</span>' : "") +
+      '<span class="r"><button class="icon" title="Download" aria-label="Download" data-dl="' + esc(m.src) + '" data-name="' + esc(it.author + "_" + it.id + "_" + key) + '">' + ID + '</button></span></div></div>';
   }).join("");
   $("#send").disabled = !selected.size;
-  $("#send").textContent = selected.size ? "Use " + selected.size + " selected" : "Use selected";
+  $("#sendl").textContent = selected.size ? "Use " + selected.size + " selected" : "Use selected";
 }
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-f],[data-open],[data-dl],.cell,#send");
