@@ -1,0 +1,120 @@
+/* Riffler colour tokens. Source of truth: palette.json -> tokens.json.
+   Three grounds, one set of role names. Put data-ground="field|dark|light" on any element (usually <body>
+   or a <section>); with no attribute you get the dark ground, the site's default reading ground.
+   Rules that bind (see contrast.md for the numbers):
+   1  small text on field (Ultra) is White only; Haze only at 24px+ or as graphics
+   2  Acid is for what is grabbed and kept (--saved, --focus on field and dark); never text on White
+   3  Shadow (#1F14C8) is the pointer's contact shadow on Ultra and nothing else
+   4  Ultra is a flat field: no glows, no gradients; the ultra-* steps are for UI states only
+   5  use roles (--surface, --text ...), not primitives, in components */
+:root {
+  /* the seven brand colours, fixed */
+  --c-ultra: #2B1DFF;  /* oklch(0.475 0.298 269) */
+  --c-night: #0B0A1F;  /* oklch(0.16 0.043 283) */
+  --c-white: #FFFFFF;  /* oklch(1 0 0) */
+  --c-ink: #0A0A14;  /* oklch(0.15 0.021 284) */
+  --c-acid: #D8FF3C;  /* oklch(0.94 0.209 121) */
+  --c-haze: #BEB8FF;  /* oklch(0.813 0.099 288) */
+  --c-shadow: #1F14C8;  /* oklch(0.395 0.248 269) */
+
+  /* ultra scale: hue 269; 700 is Ultra. UI states only (hover, pressed, disabled), never a decorative glow */
+  --ultra-50: #F3F3FF;  /* oklch(0.968 0.016 286) */
+  --ultra-100: #E4E4FF;  /* oklch(0.927 0.036 286) */
+  --ultra-200: #CECDFF;  /* oklch(0.866 0.069 286) */
+  --ultra-300: #ADB0FF;  /* oklch(0.785 0.112 282) */
+  --ultra-400: #878EFF;  /* oklch(0.692 0.164 279) */
+  --ultra-500: #5C67FF;  /* oklch(0.593 0.222 274) */
+  --ultra-600: #434BFF;  /* oklch(0.535 0.259 272) */
+  --ultra-700: #2B1DFF;  /* oklch(0.475 0.298 269) */
+  --ultra-800: #2108D0;  /* oklch(0.4 0.26 269) */
+  --ultra-900: #150098;  /* oklch(0.314 0.208 269) */
+  --ultra-950: #0A0063;  /* oklch(0.231 0.153 269) */
+
+  /* night scale: violet-tinted neutral, hue 283; 950 is Night. Borders, raised surfaces, muted text */
+  --night-50: #F6F6FC;  /* oklch(0.975 0.008 286) */
+  --night-100: #ECECF3;  /* oklch(0.945 0.009 286) */
+  --night-200: #DCDDE6;  /* oklch(0.899 0.012 281) */
+  --night-300: #C5C6D2;  /* oklch(0.829 0.017 282) */
+  --night-400: #A9A9B8;  /* oklch(0.74 0.021 286) */
+  --night-500: #8A8B9C;  /* oklch(0.642 0.025 283) */
+  --night-600: #6C6D80;  /* oklch(0.541 0.03 283) */
+  --night-700: #525369;  /* oklch(0.45 0.036 283) */
+  --night-800: #3A3B52;  /* oklch(0.361 0.04 282) */
+  --night-900: #1F1F36;  /* oklch(0.251 0.043 283) */
+  --night-950: #0B0A1F;  /* oklch(0.16 0.043 283) */
+
+  /* acid scale: hue 121; 200 is Acid. Darker steps exist only so 'saved' passes on light grounds */
+  --acid-50: #EFFFB5;  /* oklch(0.971 0.096 118) */
+  --acid-100: #E6FF8E;  /* oklch(0.958 0.141 119) */
+  --acid-200: #D8FF3C;  /* oklch(0.94 0.209 121) */
+  --acid-300: #C4EB09;  /* oklch(0.881 0.21 121) */
+  --acid-400: #ABD000;  /* oklch(0.802 0.194 122) */
+  --acid-500: #8EAE00;  /* oklch(0.701 0.17 122) */
+  --acid-600: #738D00;  /* oklch(0.601 0.145 122) */
+  --acid-700: #586E00;  /* oklch(0.502 0.122 122) */
+  --acid-800: #445600;  /* oklch(0.423 0.103 123) */
+  --acid-900: #2E3C00;  /* oklch(0.332 0.081 123) */
+  --acid-950: #1A2400;  /* oklch(0.242 0.06 124) */
+}
+
+/* dark: Night. The default reading ground, code, terminal. */
+:root,
+[data-ground="dark"] {
+  color-scheme: dark;
+  --surface: var(--c-night);
+  --surface-raised: var(--night-900);
+  --text: var(--c-white);
+  --text-muted: var(--night-200);
+  --text-large-soft: var(--c-haze);
+  --accent: var(--c-haze);
+  --accent-hover: var(--c-white);
+  --on-accent: var(--c-ink);
+  --border: var(--night-500);
+  --border-subtle: var(--night-800);
+  --focus: var(--c-acid);
+  --code-bg: var(--night-900);
+  --code-text: var(--c-white);
+  --saved: var(--c-acid);
+}
+
+/* field: Ultra. Hero and brand moments. Small text White only. */
+[data-ground="field"] {
+  color-scheme: dark;
+  --surface: var(--c-ultra);
+  --surface-raised: var(--c-night);
+  --text: var(--c-white);
+  --text-muted: var(--c-white);
+  --text-large-soft: var(--c-haze);
+  --accent: var(--c-white);
+  --accent-hover: var(--c-haze);
+  --on-accent: var(--c-ink);
+  --border: var(--c-haze);
+  --border-subtle: var(--ultra-500);
+  --focus: var(--c-acid);
+  --code-bg: var(--c-night);
+  --code-text: var(--c-white);
+  --saved: var(--c-acid);
+}
+
+/* light: White. Docs and README rendering on light GitHub. */
+[data-ground="light"] {
+  color-scheme: light;
+  --surface: var(--c-white);
+  --surface-raised: var(--night-50);
+  --text: var(--c-ink);
+  --text-muted: var(--night-700);
+  --text-large-soft: var(--night-600);
+  --accent: var(--c-ultra);
+  --accent-hover: var(--ultra-800);
+  --on-accent: var(--c-white);
+  --border: var(--night-500);
+  --border-subtle: var(--night-200);
+  --focus: var(--c-ultra);
+  --code-bg: var(--night-50);
+  --code-text: var(--c-ink);
+  --saved: var(--acid-800);
+}
+
+/* The ground paints itself and sets default text, so a bare <section data-ground="..."> works. */
+[data-ground] { background: var(--surface); color: var(--text); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

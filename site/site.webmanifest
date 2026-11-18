@@ -1,0 +1,27 @@
+{
+  "name": "Riffler",
+  "short_name": "Riffler",
+  "description": "Connect your coding agent to X.",
+  "start_url": "./",
+  "display": "browser",
+  "background_color": "#2B1DFF",
+  "theme_color": "#2B1DFF",
+  "icons": [
+    {
+      "src": "assets/brand/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/brand/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/brand/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

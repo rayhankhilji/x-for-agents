@@ -1,11 +1,20 @@
-# Riffler
+<p align="center">
+  <a href="https://riffler.pages.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="site/assets/brand/logos/signature-reversed.svg">
+      <img src="site/assets/brand/logos/signature-ink.svg" alt="Riffler" width="320">
+    </picture>
+  </a>
+</p>
 
-**Let the feed run. Keep the originals.**  ·  [riffler.pages.dev](https://riffler.pages.dev)
+<h1 align="center">Connect your coding agent to X.</h1>
 
-Riffler is a free MCP server. It lets Claude scroll X with your own account, ten tabs at once, and
-puts the full-size images, best-quality videos and post data straight into your project.
+<p align="center"><strong>Full-size media. No screenshots.</strong></p>
 
-Claude never looks at a screenshot of X. It reads the data X's own web app loads and gets back one
+Riffler is a free MCP server. Your agent scrolls X with your account, ten tabs at once, and saves the
+full-size images and videos straight into your project.
+
+Your agent never looks at a screenshot of X. It reads the data X's own web app loads and gets back one
 line per run. When it needs to see, it gets one contact sheet of up to 60 numbered thumbnails.
 
 ```bash
