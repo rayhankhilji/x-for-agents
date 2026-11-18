@@ -123,7 +123,7 @@ button:disabled{opacity:.4;cursor:default}
 <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></symbol>
 </defs></svg>
 <header><div class="brand"><svg class="mark" aria-hidden="true"><use href="#m"/></svg><b id="title">X media</b><span class="muted" id="sub"></span></div>
-<div class="tabs"><button data-f="all" class="on">${ic("collect")}All</button><button data-f="photo">${ic("image")}Photos</button><button data-f="video">${ic("video")}Videos</button><button data-f="gif">${ic("limits")}GIFs</button>
+<div class="tabs"><button data-f="all" class="on">${ic("collect")}All</button><button data-f="photo">${ic("image")}Photos</button><button data-f="video">${ic("video")}Videos</button><button data-f="gif">GIFs</button>
 <button id="send" class="primary" disabled>${ic("saved")}<span id="sendl">Use selected</span></button></div></header>
 <div class="grid" id="grid"><div class="empty">Waiting for results…</div></div>
 <script>${appBundle()}</script>
@@ -153,7 +153,7 @@ function render() {
       : '<video preload="none" playsinline muted ' + (m.type === "gif" ? "loop autoplay " : "controls ") + 'poster="' + esc(m.thumb) + '" src="' + esc(m.src) + '"></video>';
     return '<div class="cell' + (selected.has(key) ? " sel" : "") + '" data-k="' + key + '">' + vis +
       '<span class="badge">' + key + '</span>' + (m.type !== "photo" ? '<span class="dur">' + (m.type === "gif" ? "GIF" : IV + dur(m.dur)) + "</span>" : "") +
-      '<div class="meta"><a href="#" data-open="' + esc(it.url) + '" title="' + esc(it.text) + '">@' + esc(it.author) + '</a>' + (it.likes != null ? '<span class="muted l">' + IL + fmt(it.likes) + '</span>' : "") +
+      '<div class="meta"><a href="#" data-open="' + esc(it.url) + '" title="' + esc(it.text) + '">@' + esc(it.author) + '</a>' + (it.likes ? '<span class="muted l">' + IL + fmt(it.likes) + '</span>' : "") +
       '<span class="r"><button class="icon" title="Download" aria-label="Download" data-dl="' + esc(m.src) + '" data-name="' + esc(it.author + "_" + it.id + "_" + key) + '">' + ID + '</button></span></div></div>';
   }).join("");
   $("#send").disabled = !selected.size;
